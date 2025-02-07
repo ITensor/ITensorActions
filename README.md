@@ -174,3 +174,28 @@ jobs:
     name: "Literate Check"
     uses: "ITensor/ITensorActions/workflows/LiterateCheck.yml@main"
 ```
+
+## CompatHelper
+
+The CompatHelper workflow is designed to periodically check dependencies for breaking
+releases, and if so make PRs to bump the compat versions. The workflow would look like:
+Note this workflow checks both the Julia [General registry](https://github.com/JuliaRegistries/General)
+and the [ITensorRegistry](https://github.com/ITensor/ITensorRegistry) for breaking releases
+of dependencies.
+
+```yaml
+name: "CompatHelper"
+
+on:
+  schedule:
+    - cron: 0 0 * * *
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  CompatHelper:
+    name: "CompatHelper"
+    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@main"
+```
