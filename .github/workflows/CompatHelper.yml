@@ -61,11 +61,11 @@ jobs:
             )
           ]
           if !isempty("${{ inputs.local-registry-names }}") && !isempty("${{ inputs.local-registry-urls }}")
-            names = split("${{ inputs.local-registry-names }}", "\n") .|> string
-            urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
-            for (name, url) in zip(names, urls)
-              (isempty(name) || isempty(url)) && continue
-              push!(registries, Pkg.RegistrySpec(; name, url))
+            registry_names = split("${{ inputs.local-registry-names }}", "\n") .|> string
+            registry_urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
+            for (registry_name, registry_url) in zip(registry_names, registry_urls)
+              (isempty(registry_name) || isempty(registry_url)) && continue
+              push!(registries, Pkg.RegistrySpec(; name=registry_name, url=registry_url))
             end
           end
           CompatHelper.main(; registries, bump_version=true)
