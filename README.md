@@ -207,3 +207,41 @@ jobs:
     with:
       local-registry-urls: "https://github.com/ITensor/ITensorRegistry.git"
 ```
+
+## IntegrationTest
+
+Test a set of dependencies of the package against the current PR branch
+to check if changes in the branch break any downstream tests. If the version
+is bumped to indicate a breaking change according to semver, the test passes
+since it is safe to register the changes without breaking downstream
+packages if they follow semver in their compat versions.
+Additionally, if some dependent packages being tested are registered in one or more
+local registry, you can specify a list of local registries using their
+repository URLs using the `local-registy-urls` option,
+which should be a string with registry URLs seperated by a newline character (`\n`).
+Here is an example workflow:
+
+```yaml
+name: "IntegrationTest"
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags: '*'
+  pull_request:
+
+jobs:
+  integration-test:
+    name: "IntegrationTest"
+    strategy:
+       matrix:
+         repo:
+           - 'ITensor/BlockSparseArrays.jl'
+           - 'ITensor/NamedDimsArrays.jl'
+           - 'ITensor/TensorAlgebra.jl'
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    with:
+      local-registry-urls: "https://github.com/ITensor/ITensorRegistry.git"
+      repo: "${{ matrix.repo }}"
+```
