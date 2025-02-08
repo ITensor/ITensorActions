@@ -8,9 +8,16 @@ on:
         default: "1"
         required: false
         type: string
-      localregistries:
-        description: 'Registries besides General to use. Specified by providing the url (https/ssh) to the Github
-                      repositories as a newline (\n) seperated list.'
+      local-registry-names:
+        description: 'Names of registries besides General to use. Specified by providing the name of the registries
+                      as a newline (\n) seperated list. Should correspond to the registry URLs listed in `local-registry-urls`.'
+        default: ""
+        required: false
+        type: string
+      local-registry-urls:
+        description: 'URLs of registries besides General to use. Specified by providing the url (https/ssh) to the Github
+                      repositories as a newline (\n) seperated list. Should correspond to the registry names listed in
+                      `local-registry-names`.'
         default: ""
         required: false
         type: string
@@ -48,13 +55,17 @@ jobs:
           import CompatHelper
           import Pkg
           registries = [
-              Pkg.RegistrySpec(; url = "https://github.com/JuliaRegistries/General.git")
+            Pkg.RegistrySpec(;
+              name = "General",
+              url = "https://github.com/JuliaRegistries/General.git",
+            )
           ]
-          if !isempty("${{ inputs.localregistries }}")
-            local_repos = split("${{ inputs.localregistries }}", "\n") .|> string
-            for repo_url in local_repos
-              isempty(repo_url) && continue
-              pus!(registries, Pkg.RegistrySpec(; url = repo_url))
+          if !isempty("${{ inputs.local-registry-names }}") && !isempty("${{ inputs.local-registry-urls }}")
+            registry_names = split("${{ inputs.local-registry-names }}", "\n") .|> string
+            registry_urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
+            for (registry_name, registry_url) in zip(registry_names, registry_urls)
+              (isempty(registry_name) || isempty(registry_url)) && continue
+              push!(registries, Pkg.RegistrySpec(; name=registry_name, url=registry_url))
             end
           end
           CompatHelper.main(; registries, bump_version=true)
