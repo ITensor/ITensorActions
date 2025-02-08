@@ -181,10 +181,13 @@ The CompatHelper workflow is designed to periodically check dependencies for bre
 releases, and if so make PRs to bump the compat versions. By default this workflow
 checks the Julia [General registry](https://github.com/JuliaRegistries/General)
 for breaking releases of dependencies, but you can add other registries
-by specifying the registry names in the `local-registry-names` option
-and the registry repository URLs in the `local-registy-urls` option.
-Both should be strings with registries seperated by a newline character (`\n`).
-Here is an example workflow:
+by specifying the registry URLs with the `local-registy-urls` option,
+which should be strings with registry URLs seperated by a newline character (`\n`).
+Registry names will be guess from the URLs, for example if a registry URL
+is "https://github.com/ITensor/ITensorRegistry.git" we will guess that the
+registry name is "ITensorRegistry". If that is not the case for one or more registry,
+you will need to specify all of the registry names as well using the `local-registry-names`
+in the same format. Here is an example workflow:
 
 ```yaml
 name: "CompatHelper"
@@ -202,6 +205,5 @@ jobs:
     name: "CompatHelper"
     uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@main"
     with:
-      local-registry-names: "ITensorRegistry"
       local-registry-urls: "https://github.com/ITensor/ITensorRegistry.git"
 ```
