@@ -12,11 +12,11 @@ on:
         description: "Repository name, including the group/user, such as ITensor/ITensors.jl"
         required: true
         type: string
-      localregistries:
+      local-registry-urls:
         description: 'Registries besides General to use. Specified by providing the url (https/ssh) to the Github
                       repositories as a newline (\n) seperated list. Defaults to including the ITensorRegistry
                       (https://github.com/ITensor/ITensorRegistry.git).'
-        default: "https://github.com/ITensor/ITensorRegistry.git"
+        default: ""
         required: false
         type: string
 
@@ -47,11 +47,11 @@ jobs:
         run: |
           using Pkg
           # If provided add local registries
-          if !isempty("${{ inputs.localregistries }}")
-            local_repos = split("${{ inputs.localregistries }}", "\n") .|> string
-            for repo_url in local_repos
-              isempty(repo_url) && continue
-              Pkg.Registry.add(Pkg.RegistrySpec(; url = repo_url))
+          if !isempty("${{ inputs.local-registry-urls }}")
+            registry_urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
+            for registry_url in registry_urls
+              isempty(registry_url) && continue
+              Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
           try
