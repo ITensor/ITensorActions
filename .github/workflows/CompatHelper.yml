@@ -8,16 +8,16 @@ on:
         default: "1"
         required: false
         type: string
-      local-registry-urls:
+      localregistry:
         description: 'URLs of registries besides General to use. Specified by providing the url (https/ssh) to the Github
                       repositories as a newline (\n) seperated list. Should correspond to the registry names listed in
-                      `local-registry-names`.'
+                      `localregistry-names`.'
         default: ""
         required: false
         type: string
-      local-registry-names:
+      localregistry-names:
         description: 'Names of registries besides General to use. Specified by providing the name of the registries
-                      as a newline (\n) seperated list. Should correspond to the registry URLs listed in `local-registry-urls`.'
+                      as a newline (\n) seperated list. Should correspond to the registry URLs listed in `localregistry`.'
         default: ""
         required: false
         type: string
@@ -60,10 +60,10 @@ jobs:
               url = "https://github.com/JuliaRegistries/General.git",
             )
           ]
-          if !isempty("${{ inputs.local-registry-urls }}")
-            registry_urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
-            registry_names = if !isempty("${{ inputs.local-registry-names }}")
-              split("${{ inputs.local-registry-names }}", "\n") .|> string
+          if !isempty("${{ inputs.localregistry }}")
+            registry_urls = split("${{ inputs.localregistry }}", "\n") .|> string
+            registry_names = if !isempty("${{ inputs.localregistry-names }}")
+              split("${{ inputs.localregistry-names }}", "\n") .|> string
             else
               # Guess the registry name from the last part of the repository URL.
               map(registry_url -> string(first(split(last(split(registry_url, '/')), '.'))), registry_urls)
