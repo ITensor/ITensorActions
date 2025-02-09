@@ -10,14 +10,7 @@ on:
         type: string
       localregistry:
         description: 'URLs of registries besides General to use. Specified by providing the url (https/ssh) to the Github
-                      repositories as a newline (\n) seperated list. Should correspond to the registry names listed in
-                      `localregistry-names`.'
-        default: ""
-        required: false
-        type: string
-      localregistry-names:
-        description: 'Names of registries besides General to use. Specified by providing the name of the registries
-                      as a newline (\n) seperated list. Should correspond to the registry URLs listed in `localregistry`.'
+                      repositories as a newline (\n) seperated list.'
         default: ""
         required: false
         type: string
@@ -53,23 +46,32 @@ jobs:
       - name: "Run CompatHelper"
         run: |
           import CompatHelper
+          import LibGit2
           import Pkg
+          import TOML
+          function registry_info_from_url(url::AbstractString)
+            return mktempdir() do tmp_path
+              # Retry to help spurious connection issues, particularly on CI.
+              # See https://github.com/JuliaLang/Pkg.jl/blob/v1.11.0/src/Registry/Registry.jl#L246-L248.
+              repo = retry(LibGit2.clone; delays=fill(1.0, 5), check=(s, e) -> e isa LibGit2.GitError)(url, tmp_path)
+              LibGit2.close(repo)
+              return TOML.parsefile(joinpath(tmp_path, "Registry.toml"))
+            end
+          end
+          registry_name_from_url(url::AbstractString) = registry_info_from_url(url)["name"]
           registries = [
             Pkg.RegistrySpec(;
-              name = "General",
               url = "https://github.com/JuliaRegistries/General.git",
+              name = "General",
             )
           ]
           if !isempty("${{ inputs.localregistry }}")
             registry_urls = split("${{ inputs.localregistry }}", "\n") .|> string
-            registry_names = if !isempty("${{ inputs.localregistry-names }}")
-              split("${{ inputs.localregistry-names }}", "\n") .|> string
-            else
-              # Guess the registry name from the last part of the repository URL.
-              map(registry_url -> string(first(split(last(split(registry_url, '/')), '.'))), registry_urls)
-            end
-            for (registry_url, registry_name) in zip(registry_urls, registry_names)
+            for registry_url in registry_urls
               isempty(registry_url) && continue
+              registry_name = registry_name_from_url(registry_url)
+              # `CompatHelper.main` requires both the URL and the name.
+              # TODO: Raise an issue about that in CompatHelper.jl.
               push!(registries, Pkg.RegistrySpec(; url=registry_url, name=registry_name))
             end
           end
