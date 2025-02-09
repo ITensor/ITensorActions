@@ -12,10 +12,8 @@ on:
         description: "Repository name, including the group/user, such as ITensor/ITensors.jl"
         required: true
         type: string
-      local-registry-urls:
-        description: 'Registries besides General to use. Specified by providing the url (https/ssh) to the Github
-                      repositories as a newline (\n) seperated list. Defaults to including the ITensorRegistry
-                      (https://github.com/ITensor/ITensorRegistry.git).'
+      localregistry:
+        description: "Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) seperated list. User is responsible for setting up the necessary SSH-Keys to access the repositories if necessary."
         default: ""
         required: false
         type: string
@@ -35,8 +33,9 @@ jobs:
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
-          localregistry: https://github.com/ITensor/ITensorRegistry.git
       - uses: julia-actions/julia-buildpkg@latest
+        with:
+          localregistry: "${{ inputs.localregistry }}"
       - name: Clone Downstream
         uses: actions/checkout@v4
         with:

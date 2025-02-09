@@ -217,7 +217,7 @@ since it is safe to register the changes without breaking downstream
 packages if they follow semver in their compat versions.
 Additionally, if some dependent packages being tested are registered in one or more
 local registry, you can specify a list of local registries using their
-repository URLs using the `local-registy-urls` option,
+repository URLs using the `localregisty` option,
 which should be a string with registry URLs seperated by a newline character (`\n`).
 Here is an example workflow:
 
@@ -242,6 +242,6 @@ jobs:
            - 'ITensor/TensorAlgebra.jl'
     uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
     with:
-      local-registry-urls: "https://github.com/ITensor/ITensorRegistry.git"
+      localregistry: "https://github.com/ITensor/ITensorRegistry.git"
       repo: "${{ matrix.repo }}"
 ```
