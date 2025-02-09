@@ -46,8 +46,8 @@ jobs:
         run: |
           using Pkg
           # If provided add local registries
-          if !isempty("${{ inputs.local-registry-urls }}")
-            registry_urls = split("${{ inputs.local-registry-urls }}", "\n") .|> string
+          if !isempty("${{ inputs.localregistry }}")
+            registry_urls = split("${{ inputs.localregistry }}", "\n") .|> string
             for registry_url in registry_urls
               isempty(registry_url) && continue
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
