@@ -58,7 +58,8 @@ jobs:
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
-            Pkg.test("MapBroadcast")  # resolver may fail with test time deps
+            pkg_name = string(first(split(last(split("${{ inputs.repo }}", '/')), '.')))
+            Pkg.test(pkg_name)  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine
