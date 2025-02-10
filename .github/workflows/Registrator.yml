@@ -68,4 +68,3 @@ jobs:
           branch-suffix: short-commit-hash
           title: "New package version: ${{ github.repository }}"
           token: ${{ secrets.REGISTRATOR_KEY }}
-          push-to-fork: lkdvos/ITensorRegistry
