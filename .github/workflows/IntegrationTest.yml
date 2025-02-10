@@ -42,7 +42,7 @@ jobs:
           repository: ${{ inputs.repo }}
           path: downstream
       - name: Load this and run the downstream tests
-        shell: julia --color=yes --project=downstream {0}
+        shell: julia --color=yes --project=test_downstream {0}
         run: |
           using Pkg
           # If provided add local registries
@@ -54,10 +54,11 @@ jobs:
             end
           end
           try
+            Pkg.develop(PackageSpec(path="downstream"))
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
-            Pkg.test(coverage=true)  # resolver may fail with test time deps
+            Pkg.test("MapBroadcast")  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine
