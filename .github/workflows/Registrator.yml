@@ -1,0 +1,71 @@
+name: "Reusable Registrator Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      localregistry:
+        description: 'URLs of the local registry where the package should be registered.
+                      Specified by providing the url (https/ssh) to the Github repositories as a newline (\n) seperated list.'
+        required: true
+        type: string
+    secrets:
+      REGISTRATOR_KEY:
+        required: true
+
+jobs:
+  registrator:
+    name: "Register package version"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if Julia is already available in the PATH
+        id: julia_in_path
+        run: which julia
+        continue-on-error: true
+      - name: Install Julia, but only if it is not already available in the PATH
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "${{ inputs.julia-version }}"
+          arch: ${{ runner.arch }}
+        if: steps.julia_in_path.outcome != 'success'
+      - name: "Add the General registry via Git"
+        run: |
+          import Pkg
+          ENV["JULIA_PKG_SERVER"] = ""
+          Pkg.Registry.add("General")
+        shell: julia --color=yes {0}
+
+      - name: Checkout package
+        uses: actions/checkout@v4
+        with:
+          path: package
+      - name: Checkout local registry
+        uses: actions/checkout@v4
+        with:
+          repository: "${{ inputs.localregistry }}"
+          path: registry
+
+      - name: Install LocalRegistry.jl
+        run: |
+          import Pkg
+          name = "LocalRegistry"
+          uuid = "89398ba2-070a-4b16-a995-9893c55d93cf"
+          version = "0.5.7"
+          Pkg.add(; name, uuid, version)
+        shell: julia --project --color=yes {0}
+
+      - name: Update local registry
+        run: |
+          using LocalRegistry
+          package = "./package"
+          registry = "./registry"
+          register(package; registry, commit=false, push=false)
+        shell: julia --project --color=yes {0}
+
+      - name: Create PR to registry
+        uses: peter-evans/create-pull-request@v7
+        with:
+          path: registry
+          branch-suffix: short-commit-hash
+          title: "New package version: ${{ github.repository }}"
+          token: ${{ secrets.REGISTRATOR_KEY }}
+          push-to-fork: lkdvos/ITensorRegistry
