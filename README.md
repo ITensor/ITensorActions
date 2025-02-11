@@ -225,7 +225,11 @@ on:
     branches:
       - 'main'
     tags: '*'
+    paths:
+      - 'Project.toml'
   pull_request:
+    paths:
+      - 'Project.toml'
 
 jobs:
   integration-test:
