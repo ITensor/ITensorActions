@@ -1,0 +1,49 @@
+name: "Reusable Integration Request"
+
+on:
+  workflow_call:
+    inputs:
+      trigger:
+        description: "Required trigger for requesting the test suite"
+        default: "@integrationtests"
+        required: false
+        type: string
+      localregistry:
+        description: "Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) seperated list. User is responsible for setting up the necessary SSH-Keys to access the repositories if necessary."
+        default: ""
+        required: false
+        type: string
+
+jobs:
+  get-pr-comment:
+    runs-on: ubuntu-latest
+    outputs:
+      repo: ${{ steps.extract.outputs.REPO }}
+    steps:
+      - name: Extract command arguments
+        id: extract
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          QUERY="${{ inputs.trigger }}"
+          if [[ "$COMMENT" =~ ^$QUERY[[:space:]]+(.*) ]]; then
+            echo "REPO=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+          else
+            echo "No valid command found, exiting..."
+            exit 1
+          fi
+
+  runtests:
+    needs: get-pr-comment
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
+    with:
+      localregistry: "${{ inputs.localregistry }}"
+      repo: "${{ needs.get-pr-comment.outputs.repo }}"
+
+  report:
+    needs: [get-pr-comment, runtests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: '+1'

@@ -245,3 +245,23 @@ jobs:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
       repo: "${{ matrix.repo }}"
 ```
+
+Additionally, it is possible to run these tests dynamically, whenever a comment on a PR is detected.
+For example, a workflow that detects `@integrationtests Repo/Package.jl` looks like:
+
+```yaml
+name: "Integration Request"
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  integrationrequest:
+    if: |
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association)
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationRequest.yml@main
+    with:
+      localregistry: https://github.com/ITensor/ITensorRegistry.git
+```
