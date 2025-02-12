@@ -1,4 +1,4 @@
-name: "Reusable Integration Request"
+name: "Reusable Integration Test Request"
 
 on:
   workflow_call:
