@@ -67,4 +67,4 @@ jobs:
           path: registry
           branch-suffix: short-commit-hash
           title: "New package version: ${{ github.repository }}"
-          token: ${{ secrets.REGISTRATOR_KEY }}
+          token: "${{ secrets.REGISTRATOR_KEY }}"
