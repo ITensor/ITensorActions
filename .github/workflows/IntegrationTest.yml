@@ -49,6 +49,7 @@ jobs:
             end
           end
           try
+            pkg = "{{ inputs.pkg }}"
             Pkg.add(PackageSpec(name=pkg))
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
