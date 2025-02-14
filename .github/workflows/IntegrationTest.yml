@@ -36,11 +36,6 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
         with:
           localregistry: "${{ inputs.localregistry }}"
-      - name: Clone Downstream
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.repo }}
-          path: downstream
       - name: Load this and run the downstream tests
         shell: julia --color=yes --project=test_downstream {0}
         run: |
@@ -64,7 +59,7 @@ jobs:
               path = joinpath(path, subdir)
               pkg_name = last(split(repo, '/'))
             end
-            Pkg.develop(PackageSpec(path))
+            Pkg.add(pkg_name)
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
