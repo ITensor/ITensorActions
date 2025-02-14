@@ -243,7 +243,7 @@ jobs:
     uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      repo: "${{ matrix.repo }}"
+      pkg: "${{ matrix.pkg }}"
 ```
 
 Additionally, it is possible to run these tests dynamically, whenever a comment on a PR is detected.
