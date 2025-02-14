@@ -50,14 +50,12 @@ jobs:
           end
           try
             repo_and_subdir = split("${{ inputs.repo }}", ':')
-            repo = first(repo_and_subdir)
+            repo = string(first(repo_and_subdir))
             pkg_name = string(first(split(last(split(repo, '/')), '.')))
             path = "downstream"
             if length(repo_and_subdir) > 1
               length(repo_and_subdir) == 2 || error("Bad repo input.")
-              subdir = last(repo_and_subdir)
-              path = joinpath(path, subdir)
-              pkg_name = last(split(repo, '/'))
+              pkg_name = string(last(repo_and_subdir))
             end
             Pkg.add(pkg_name)
             # force it to use this PR's version of the package
