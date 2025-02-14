@@ -20,7 +20,7 @@ on:
 
 jobs:
   test:
-    name: ${{ inputs.repo }}
+    name: ${{ inputs.pkg }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
