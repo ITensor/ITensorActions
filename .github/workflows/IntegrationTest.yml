@@ -8,8 +8,8 @@ on:
         default: "1"
         required: false
         type: string
-      repo:
-        description: "Repository name, including the group/user, such as ITensor/ITensors.jl"
+      pkg:
+        description: "Package name without `.jl`, i.e. ITensors (for ITensors.jl)."
         required: true
         type: string
       localregistry:
@@ -36,8 +36,8 @@ jobs:
       - uses: julia-actions/julia-buildpkg@latest
         with:
           localregistry: "${{ inputs.localregistry }}"
-      - name: Load this and run the downstream tests
-        shell: julia --color=yes --project=test_downstream {0}
+      - name: Run the downstream tests
+        shell: julia --color=yes --project=downstream {0}
         run: |
           using Pkg
           # If provided add local registries
@@ -49,19 +49,11 @@ jobs:
             end
           end
           try
-            repo_and_subdir = split("${{ inputs.repo }}", ':')
-            repo = string(first(repo_and_subdir))
-            pkg_name = string(first(split(last(split(repo, '/')), '.')))
-            path = "downstream"
-            if length(repo_and_subdir) > 1
-              length(repo_and_subdir) == 2 || error("Bad repo input.")
-              pkg_name = string(last(repo_and_subdir))
-            end
-            Pkg.add(pkg_name)
+            Pkg.add(PackageSpec(name=pkg))
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
-            Pkg.test(pkg_name)  # resolver may fail with test time deps
+            Pkg.test(PackageSpec(name=pkg))  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine

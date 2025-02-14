@@ -236,10 +236,10 @@ jobs:
     name: "IntegrationTest"
     strategy:
        matrix:
-         repo:
-           - 'ITensor/BlockSparseArrays.jl'
-           - 'ITensor/NamedDimsArrays.jl'
-           - 'ITensor/TensorAlgebra.jl'
+         pkg:
+           - 'BlockSparseArrays'
+           - 'NamedDimsArrays'
+           - 'TensorAlgebra'
     uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
