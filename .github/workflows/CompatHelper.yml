@@ -75,7 +75,7 @@ jobs:
               push!(registries, Pkg.RegistrySpec(; url=registry_url, name=registry_name))
             end
           end
-          subdirs = ["", "docs", "examples", "test"]
+          subdirs = [""]
           CompatHelper.main(; registries, subdirs, bump_version=true)
         shell: julia --color=yes {0}
         env:
