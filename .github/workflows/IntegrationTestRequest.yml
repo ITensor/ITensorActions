@@ -18,7 +18,7 @@ jobs:
   get-pr-comment:
     runs-on: ubuntu-latest
     outputs:
-      repo: ${{ steps.extract.outputs.REPO }}
+      pkg: ${{ steps.extract.outputs.PKG }}
     steps:
       - name: Extract command arguments
         id: extract
@@ -26,7 +26,7 @@ jobs:
           COMMENT="${{ github.event.comment.body }}"
           QUERY="${{ inputs.trigger }}"
           if [[ "$COMMENT" =~ ^$QUERY[[:space:]]+(.*) ]]; then
-            echo "REPO=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "PKG=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
           else
             echo "No valid command found, exiting..."
             exit 1
@@ -37,7 +37,7 @@ jobs:
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
       localregistry: "${{ inputs.localregistry }}"
-      repo: "${{ needs.get-pr-comment.outputs.repo }}"
+      pkg: "${{ needs.get-pr-comment.outputs.pkg }}"
 
   report:
     needs: [get-pr-comment, runtests]
