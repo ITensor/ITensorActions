@@ -25,8 +25,11 @@ jobs:
         run: |
           COMMENT="${{ github.event.comment.body }}"
           QUERY="${{ inputs.trigger }}"
-          if [[ "$COMMENT" =~ ^$QUERY[[:space:]]+(.*) ]]; then
-            echo "PKG=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+          # Check if COMMENT starts with QUERY followed by a space
+          if [[ "$COMMENT" == "$QUERY "* ]]; then
+            # Extract everything after QUERY + space
+            PKG="${COMMENT#"$QUERY "}"
+            echo "PKG=$PKG" >> $GITHUB_OUTPUT
           else
             echo "No valid command found, exiting..."
             exit 1
@@ -37,7 +40,7 @@ jobs:
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
       localregistry: "${{ inputs.localregistry }}"
-      pkg: "${{ needs.get-pr-comment.outputs.pkg }}"
+      pkg: "${{ needs.get-pr-comment.outputs.pkg || ''}}"
 
   report:
     needs: [get-pr-comment, runtests]
