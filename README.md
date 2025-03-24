@@ -265,3 +265,22 @@ jobs:
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
+
+## Version Check
+
+The `VersionCheck` workflow is designed to check if the package version has been increased with respect to the latest release.
+The workflow would look like:
+
+```yaml
+name: "Version Check"
+
+on:
+  pull_request:
+
+jobs:
+  version-check:
+    name: "Version Check"
+    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@main"
+    with:
+      localregistry: https://github.com/ITensor/ITensorRegistry.git
+```
