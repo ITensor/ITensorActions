@@ -1,0 +1,54 @@
+name: "Reusable Version Checking Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      julia-version:
+        description: "Julia version"
+        default: "1"
+        required: false
+        type: string
+      localregistry:
+        description: "Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) seperated list. User is responsible for setting up the necessary SSH-Keys to access the repositories if necessary."
+        default: ""
+        required: false
+        type: string
+
+jobs:
+  version-check:
+    name: "Check Versions"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ inputs.julia-version }}
+      
+      - uses: julia-actions/julia-buildpkg@latest
+        with:
+          localregistry: "${{ inputs.localregistry }}"
+      
+      - name: Check the Project version
+        shell: julia --color=yes {0}
+        run: |
+          using Pkg
+          Pkg.activate(".")
+
+          function find_pkg_info(uuid)
+              for registry in Pkg.Registry.reachable_registries()
+                  if haskey(registry.pkgs, uuid)
+                      return registry.pkgs[uuid]
+                  end
+              end
+              error("Package not found in any registry")
+          end
+
+          uuid = Pkg.project().uuid
+          pkg_info = find_pkg_info(uuid)
+          
+          registered_version = maximum(keys(Registry.registry_info(pkg_info).version_info))
+          current_version = Pkg.project().version
+          
+          @assert registered_version < current_version "Current version is not greater than the registered version"
