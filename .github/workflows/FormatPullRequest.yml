@@ -38,7 +38,7 @@ jobs:
         shell: julia --color=yes {0}
         run: |
           import Pkg
-          Pkg.add(PackageSpec(name="JuliaFormatter", version="${{ inputs.juliaformatter-version }}"))
+          Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version="${{ inputs.juliaformatter-version }}"))
           using JuliaFormatter
           format("./${{ inputs.directory }}", verbose=true)
 

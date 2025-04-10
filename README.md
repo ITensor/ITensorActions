@@ -160,6 +160,10 @@ name: "Format Pull Request"
 on:
   schedule:
     - cron: '0 0 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   format-pull-request:
@@ -203,7 +207,7 @@ name: "CompatHelper"
 
 on:
   schedule:
-    - cron: 0 0 * * *
+    - cron: '0 0 * * *'
   workflow_dispatch:
 permissions:
   contents: write
