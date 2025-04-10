@@ -124,7 +124,7 @@ jobs:
 ## Formatting
 
 The formatting workflow is designed to run the `JuliaFormatter` on Julia packages.
-There are two workflows available, one for simply verifying the formatting and one for additionally applying suggested changes.
+There are three workflows available: one for simply verifying the formatting, one for additionally applying suggested changes, and one that makes a PR to the repository formatting the code in the repository.
 
 ```yaml
 name: "Format Check"
@@ -152,6 +152,19 @@ jobs:
   format-suggestions:
     name: "Format Suggestions"
     uses: "ITensor/ITensorActions/workflows/FormatSuggest.yml@main"
+```
+
+```yaml
+name: "Format Pull Request"
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  format-pull-request:
+    name: "Format Pull Request"
+    uses: "ITensor/ITensorActions/workflows/FormatPullRequest.yml@main"
 ```
 
 ## LiterateCheck
