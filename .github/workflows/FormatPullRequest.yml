@@ -40,7 +40,14 @@ jobs:
           import Pkg
           Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version="${{ inputs.juliaformatter-version }}"))
           using JuliaFormatter
-          format("./${{ inputs.directory }}", verbose=true)
+          if !format("./${{ inputs.directory }}", verbose=true)
+            # Bump the patch version of the package if the formatting
+            # needs to be updated.
+            project_file = "Project.toml"
+            project = Pkg.Types.read_project(project_file)
+            project.version = Base.nextpatch(project.version)
+            Pkg.Types.write_project(project, project_file)
+          end
 
       # https://github.com/marketplace/actions/create-pull-request
       # https://github.com/peter-evans/create-pull-request#reference-example
