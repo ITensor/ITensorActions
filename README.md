@@ -139,7 +139,7 @@ on:
 jobs:
   format-check:
     name: "Format Check"
-    uses: "ITensor/ITensorActions/workflows/FormatCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@main"
 ```
 
 ```yaml
@@ -151,7 +151,7 @@ on:
 jobs:
   format-suggestions:
     name: "Format Suggestions"
-    uses: "ITensor/ITensorActions/workflows/FormatSuggest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatSuggest.yml@main"
 ```
 
 ```yaml
@@ -164,7 +164,7 @@ on:
 jobs:
   format-pull-request:
     name: "Format Pull Request"
-    uses: "ITensor/ITensorActions/workflows/FormatPullRequest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@main"
 ```
 
 ## LiterateCheck
@@ -185,7 +185,7 @@ on:
 jobs:
   format-check:
     name: "Literate Check"
-    uses: "ITensor/ITensorActions/workflows/LiterateCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@main"
 ```
 
 ## CompatHelper
