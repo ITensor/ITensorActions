@@ -65,6 +65,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           path: registry
-          branch-suffix: short-commit-hash
+          branch: "registrator/${{ github.repository }}"
           title: "New package version: ${{ github.repository }}"
           token: "${{ secrets.REGISTRATOR_KEY }}"
+          delete-branch: true
