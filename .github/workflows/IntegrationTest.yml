@@ -51,9 +51,21 @@ jobs:
           try
             pkg = "${{ inputs.pkg }}"
             Pkg.add(PackageSpec(name=pkg))
+
+            # Determine the version that gets installed in order to detect
+            # if the package is forced to downgrade.
+            eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
+            v = pkgversion(eval(Symbol(pkg)))
+
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
+
+            v′ = pkgversion(eval(Symbol(pkg)))
+            if v′ < v
+              throw(Pkg.Resolve.ResolverError("The package was forced to downgrade, indicating an incompatible change."))
+            end
+
             Pkg.test(PackageSpec(name=pkg))  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
