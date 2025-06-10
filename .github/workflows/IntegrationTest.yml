@@ -50,18 +50,18 @@ jobs:
           end
           try
             pkg = "${{ inputs.pkg }}"
-            Pkg.add(PackageSpec(name=pkg))
+            Pkg.add(PackageSpec(; name=pkg))
             # Determine the version that gets installed in order to detect
             # if the package is forced to downgrade.
             eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
             version = pkgversion(eval(Symbol(pkg)))
             # force it to use this PR's version of the package
-            Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
+            Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
             Pkg.update()
             # Try forcing the installation of the package at the latest version
             # to see if there is a compatibility issue.
-            Pkg.add(PackageSpec(name=pkg, version))
-            Pkg.test(PackageSpec(name=pkg))  # resolver may fail with test time deps
+            Pkg.add(PackageSpec(; name=pkg, version=version))
+            Pkg.test(PackageSpec(; name=pkg))  # resolver may fail with test time deps
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine
