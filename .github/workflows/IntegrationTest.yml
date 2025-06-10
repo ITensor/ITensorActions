@@ -57,11 +57,16 @@ jobs:
             eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
             v = pkgversion(eval(Symbol(pkg)))
 
+            @show v
+
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
 
             v′ = pkgversion(eval(Symbol(pkg)))
+
+            @show v′
+
             if v′ < v
               throw(Pkg.Resolve.ResolverError("The package was forced to downgrade, indicating an incompatible change."))
             end
