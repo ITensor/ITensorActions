@@ -3,19 +3,14 @@ name: "Reusable Format Checking Workflow"
 on:
   workflow_call:
     inputs:
-      directory:
-        description: "The directory on which JuliaFormatter needs to be run"
-        default: "."
-        required: false
-        type: string
       julia-version:
         description: "Julia version"
         default: "1"
         required: false
         type: string
-      juliaformatter-version:
-        description: "Version of JuliaFormatter to use"
-        default: "2"
+      runic-version:
+        description: "Version of Runic to use"
+        default: "1"
         required: false
         type: string
       concurrent-jobs:
@@ -28,14 +23,11 @@ on:
         default: true
         required: false
         type: boolean
-
-    outputs:
-      formatted:
-        description: "If the specified directory is already formatted or not."
-        value: "${{ jobs.format-check.outputs.formatted }}"
-      format-diff-patch:
-        description: "A patch consisting of formatting changes which can be applied to comply with format checking. Available only if `outputs.formatted` is `false`"
-        value: "${{ jobs.format-check.outputs.formatting-changes }}"
+      format-suggestions:
+        description: "Post formatting changes as code suggestions"
+        default: true
+        required: false
+        type: boolean
 
 concurrency:
   group: "${{ inputs.concurrent-jobs && github.run_id || github.ref  }}:${{ github.workflow }}"
@@ -45,40 +37,27 @@ jobs:
   format-check:
     name: "Check Formatting"
     runs-on: ubuntu-latest
-    outputs:
-      formatted: "${{ steps.check-formatting.outputs.formatted }}"
-      formatting-changes: "${{ steps.check-formatting.outputs.formatting-changes }}"
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: julia-actions/setup-julia@v2
         with:
           version: "${{ inputs.julia-version }}"
+      - uses: julia-actions/cache@v2
 
-      - name: "Install JuliaFormatter and run formatter on ${{ github.repository }}${{ inputs.directory != '.' && format('/{0}',inputs.directory) || '' }}"
-        shell: julia --color=yes {0}
-        run: |
-          using Pkg
-          Pkg.add(PackageSpec(name="JuliaFormatter", version="${{ inputs.juliaformatter-version }}"))
-          using JuliaFormatter
-          format("./${{ inputs.directory }}", verbose=true)
+      - uses: fredrikekre/runic-action@v1
+        with:
+          version: "${{ inputs.runic-version }}"
+          format_files: ${{ inputs.format_suggestions }}
+        continue-on-error : ${{ github.event_name == 'pull_request' && inputs.format_suggestions }}
 
-      - name: "Check formatting"
-        id: check-formatting
-        run: |
-          MODIFIED_FILES="$(git diff --name-only)"
-
-          if [ -z "$MODIFIED_FILES" ]; then
-            echo "formatted=true" >> $GITHUB_OUTPUT
-          else
-            echo "Format check failed. Please format the following file(s) with JuliaFormatter v${{ inputs.juliaformatter-version }}."
-            echo "$MODIFIED_FILES"
-
-            {
-              echo "formatting-changes<<EOF"
-              echo "$(git diff)"
-              echo EOF
-            } >> $GITHUB_OUTPUT
-
-            exit 1
-          fi
+      - uses: reviewdog/action-suggester@v1
+        if: ${{ github.event_name == 'pull_request' && inputs.format_suggestions }}
+        with:
+          tool_name: Runic
+          fail_level: warning
