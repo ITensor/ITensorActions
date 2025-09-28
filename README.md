@@ -129,6 +129,12 @@ There are three workflows available: one for simply verifying the formatting, on
 ```yaml
 name: "Format Check"
 
+permissions:
+  contents: read
+  checks: write
+  issues: write
+  pull-requests: write
+
 on:
   push:
     branches:
