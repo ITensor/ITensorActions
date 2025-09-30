@@ -136,22 +136,15 @@ on:
     tags: '*'
   pull_request:
 
+permissions:
+  contents: read
+  actions: write
+  pull-requests: write
+
 jobs:
   format-check:
     name: "Format Check"
     uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@main"
-```
-
-```yaml
-name: "Format Suggestions"
-
-on:
-  pull_request:
-
-jobs:
-  format-suggestions:
-    name: "Format Suggestions"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatSuggest.yml@main"
 ```
 
 ```yaml
