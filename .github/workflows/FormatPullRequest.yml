@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       directory:
-        description: "The directory on which JuliaFormatter needs to be run"
+        description: "The directory on which Runic needs to be run"
         default: "."
         required: false
         type: string
@@ -13,9 +13,9 @@ on:
         default: "1"
         required: false
         type: string
-      juliaformatter-version:
-        description: "Version of JuliaFormatter to use"
-        default: "2"
+      runic-version:
+        description: "Version of Runic to use"
+        default: "1"
         required: false
         type: string
 
@@ -34,31 +34,48 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
-      - name: Install JuliaFormatter and format
+      - name: Run Runic
+        uses: fredrikekre/runic-action@v1
+        with:
+          version: "${{ inputs.runic-version }}"
+          format_files: true
+        continue-on-error: true
+        
+      # Detect whether any files changed (tracked files) after formatting.
+      # We'll use this to conditionally bump the version and open a PR.
+      - name: Detect formatting changes
+        id: changes
+        shell: bash
+        working-directory: ${{ inputs.directory }}
+        run: |
+          if ! git diff --quiet; then
+            echo "changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=false" >> "$GITHUB_OUTPUT"
+          fi
+      
+
+      # Only bump the patch version if formatting actually changed files
+      - name: Bump patch version
+        if: steps.changes.outputs.changes == 'true'
         shell: julia --color=yes {0}
         run: |
           import Pkg
-          Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version="${{ inputs.juliaformatter-version }}"))
-          using JuliaFormatter
-          if !format("./${{ inputs.directory }}", verbose=true)
-            # Bump the patch version of the package if the formatting
-            # needs to be updated.
-            project_file = "Project.toml"
-            project = Pkg.Types.read_project(project_file)
-            project.version = Base.nextpatch(project.version)
-            Pkg.Types.write_project(project, project_file)
-          end
+          project_file = "Project.toml"
+          project = Pkg.Types.read_project(project_file)
+          project.version = Base.nextpatch(project.version)
+          Pkg.Types.write_project(project, project_file)
 
-      # https://github.com/marketplace/actions/create-pull-request
-      # https://github.com/peter-evans/create-pull-request#reference-example
+      # Create a PR only if files changed (i.e., formatting needed fixes)
       - name: Create Pull Request
+        if: steps.changes.outputs.changes == 'true'
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: Format .jl files
-          title: 'Automatic JuliaFormatter.jl run'
-          branch: auto-juliaformatter-pr
+          commit-message: "Format .jl files (Runic)"
+          title: "Automatic Runic.jl run"
+          branch: auto-runic-pr
           delete-branch: true
 
       - name: Check outputs
