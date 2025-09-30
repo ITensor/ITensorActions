@@ -129,12 +129,6 @@ There are three workflows available: one for simply verifying the formatting, on
 ```yaml
 name: "Format Check"
 
-permissions:
-  contents: read
-  checks: write
-  issues: write
-  pull-requests: write
-
 on:
   push:
     branches:
@@ -167,6 +161,7 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
 permissions:
   contents: write
   pull-requests: write

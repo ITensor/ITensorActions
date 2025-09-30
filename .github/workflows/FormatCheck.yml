@@ -23,11 +23,6 @@ on:
         default: true
         required: false
         type: boolean
-      format-suggestions:
-        description: "Post formatting changes as code suggestions"
-        default: true
-        required: false
-        type: boolean
 
 concurrency:
   group: "${{ inputs.concurrent-jobs && github.run_id || github.ref  }}:${{ github.workflow }}"
@@ -49,15 +44,6 @@ jobs:
         with:
           version: "${{ inputs.julia-version }}"
       - uses: julia-actions/cache@v2
-
       - uses: fredrikekre/runic-action@v1
         with:
           version: "${{ inputs.runic-version }}"
-          format_files: ${{ inputs.format_suggestions }}
-        continue-on-error : ${{ github.event_name == 'pull_request' && inputs.format_suggestions }}
-
-      - uses: reviewdog/action-suggester@v1
-        if: ${{ github.event_name == 'pull_request' && inputs.format_suggestions }}
-        with:
-          tool_name: Runic
-          fail_level: warning
