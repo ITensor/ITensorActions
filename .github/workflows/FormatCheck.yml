@@ -123,3 +123,7 @@ jobs:
 
             Your PR no longer requires formatting changes. Thank you for your contribution!
           edit-mode: replace
+  
+      - name: Propagate exit code
+        run: |
+          exit ${{ steps.runic.outputs.exit_code }}
