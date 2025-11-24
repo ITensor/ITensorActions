@@ -1,4 +1,4 @@
-name: "Reusable Readme Generation Workflow"
+name: "Reusable Readme Generation Checking Workflow"
 
 on:
   workflow_call:
@@ -57,7 +57,7 @@ jobs:
       - name: Check if docs need to be updated
         id: check-literate
         run: |
-          MODIFIED_FILES="$(git diff --name-only)"
+          MODIFIED_FILES="$(git diff --name-only README.md)"
 
           if [ -z "$MODIFIED_FILES" ]; then
             echo "up_to_date=true" >> $GITHUB_OUTPUT
@@ -67,7 +67,7 @@ jobs:
 
             {
               echo "literate_changes<<EOF"
-              echo "$(git diff)"
+              echo "$(git diff README.md)"
               echo EOF
             } >> $GITHUB_OUTPUT
 
