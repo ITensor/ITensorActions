@@ -83,6 +83,22 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 ```
 
+### Draft PR behavior
+
+By default, when a pull request is a draft, the Tests workflow only runs the
+`ubuntu-latest` / Julia `1` (latest version) combination and skips all other
+matrix entries. This gives fast feedback while saving CI minutes.
+
+This is controlled by the `run-all-on-draft` input (default: `false`). To run
+the full matrix even on draft PRs, set it to `true`:
+
+```yaml
+    uses: "ITensor/ITensorActions/workflows/Tests.yml@main"
+    with:
+      run-all-on-draft: true
+      # ...
+```
+
 ## Documentation
 
 The documentation workflow is designed to build and deploy the documentation for Julia packages.
@@ -255,6 +271,19 @@ jobs:
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
       pkg: "${{ matrix.pkg }}"
+```
+
+### Draft PR behavior
+
+By default, integration tests are skipped entirely for draft PRs. This is
+controlled by the `run-on-draft` input (default: `false`). To run integration
+tests even on draft PRs, set it to `true`:
+
+```yaml
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    with:
+      run-on-draft: true
+      # ...
 ```
 
 Additionally, it is possible to run these tests dynamically, whenever a comment on a PR is detected.
