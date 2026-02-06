@@ -76,6 +76,11 @@ on:
         default: 60
         required: false
         type: number
+      run-all-on-draft:
+        description: "When true, run the full test matrix even on draft PRs"
+        default: false
+        required: false
+        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -83,6 +88,10 @@ on:
 jobs:
   tests:
     name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
+    if: >-
+      !github.event.pull_request.draft
+      || inputs.run-all-on-draft
+      || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
