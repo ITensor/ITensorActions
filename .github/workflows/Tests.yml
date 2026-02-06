@@ -76,6 +76,11 @@ on:
         default: 60
         required: false
         type: number
+      skip-draft-non-default:
+        description: "When true and the PR is a draft, only run on ubuntu-latest with the latest Julia version"
+        default: true
+        required: false
+        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -83,6 +88,10 @@ on:
 jobs:
   tests:
     name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
+    if: >-
+      !github.event.pull_request.draft
+      || !inputs.skip-draft-non-default
+      || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
