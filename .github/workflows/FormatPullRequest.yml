@@ -4,17 +4,12 @@ on:
   workflow_call:
     inputs:
       directory:
-        description: "The directory on which Runic needs to be run"
+        description: "The directory on which ITensorFormatter needs to be run"
         default: "."
         required: false
         type: string
       julia-version:
         description: "Julia version"
-        default: "1"
-        required: false
-        type: string
-      runic-version:
-        description: "Version of Runic to use"
         default: "1"
         required: false
         type: string
@@ -28,19 +23,22 @@ jobs:
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
-        with: 
+        with:
           version: "${{ inputs.julia-version }}"
           arch: "${{ runner.arch }}"
 
       - uses: julia-actions/cache@v2
 
-      - name: Run Runic
-        uses: fredrikekre/runic-action@v1
-        with:
-          version: "${{ inputs.runic-version }}"
-          format_files: true
+      - name: Install ITensorFormatter
+        run: |
+          julia --project=@itfmt -e 'using Pkg; Pkg.add("ITensorFormatter")'
+
+      - name: Run ITensorFormatter
+        working-directory: ${{ inputs.directory }}
+        run: |
+          julia --project=@itfmt -e 'using ITensorFormatter; ITensorFormatter.main(["."])'
         continue-on-error: true
-        
+
       # Detect whether any files changed (tracked files) after formatting.
       # We'll use this to conditionally bump the version and open a PR.
       - name: Detect formatting changes
@@ -53,7 +51,6 @@ jobs:
           else
             echo "changes=false" >> "$GITHUB_OUTPUT"
           fi
-      
 
       # Only bump the patch version if formatting actually changed files
       - name: Bump patch version
@@ -73,9 +70,9 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Format .jl files (Runic)"
-          title: "Automatic Runic.jl run"
-          branch: auto-runic-pr
+          commit-message: "Format .jl files (ITensorFormatter)"
+          title: "Automatic ITensorFormatter run"
+          branch: auto-format-pr
           delete-branch: true
 
       - name: Check outputs
