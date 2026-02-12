@@ -56,13 +56,14 @@ jobs:
 
       - name: Install ITensorFormatter
         run: |
-          julia --project=@itfmt -e 'using Pkg; Pkg.add("ITensorFormatter")'
+          julia -e 'using Pkg; Pkg.Apps.add("ITensorFormatter")'
+          echo "$HOME/.julia/bin" >> $GITHUB_PATH
 
       - name: Run ITensorFormatter
         id: format
         run: |
           set +e
-          julia --project=@itfmt -e 'using ITensorFormatter; ITensorFormatter.main(["."])'
+          itfmt .
           FORMAT_EXIT=$?
           if [ $FORMAT_EXIT -ne 0 ]; then
             echo "exit_code=2" >> $GITHUB_OUTPUT
