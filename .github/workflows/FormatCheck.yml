@@ -8,6 +8,7 @@ on:
         default: "."
         required: false
         type: string
+      julia-version:
         description: "Julia version"
         default: "1"
         required: false
