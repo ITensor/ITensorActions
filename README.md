@@ -155,6 +155,12 @@ on:
     tags: '*'
   pull_request:
 
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: write
+
 jobs:
   format-check:
     name: "Format Check"
@@ -172,6 +178,11 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   format-pull-request:
