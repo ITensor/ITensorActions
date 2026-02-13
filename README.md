@@ -139,8 +139,11 @@ jobs:
 
 ## Formatting
 
-The formatting workflow is designed to run the `JuliaFormatter` on Julia packages.
+The formatting workflows allow you to customize which directories are checked, so you can specify only the directories you want. Use the `directory` input to set the directory for formatting (default is the root directory `.`).
+
 There are three workflows available: one for simply verifying the formatting, one for additionally applying suggested changes, and one that makes a PR to the repository formatting the code in the repository.
+
+### Format Check
 
 ```yaml
 name: "Format Check"
@@ -152,16 +155,15 @@ on:
     tags: '*'
   pull_request:
 
-permissions:
-  contents: read
-  actions: write
-  pull-requests: write
-
 jobs:
   format-check:
     name: "Format Check"
     uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@main"
+    with:
+      directory: "." # Customize this to check a specific directory
 ```
+
+### Format Pull Request
 
 ```yaml
 name: "Format Pull Request"
@@ -171,14 +173,12 @@ on:
     - cron: '0 0 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   format-pull-request:
     name: "Format Pull Request"
     uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@main"
+    with:
+      directory: "." # Customize this to check a specific directory
 ```
 
 ## LiterateCheck
