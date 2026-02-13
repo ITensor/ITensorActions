@@ -58,6 +58,7 @@ jobs:
         run: |
           julia -e '
             using Pkg
+            Pkg.Registry.add("General")
             Pkg.Registry.add(; url = "https://github.com/ITensor/ITensorRegistry")
             Pkg.Apps.add("ITensorFormatter")
           '
