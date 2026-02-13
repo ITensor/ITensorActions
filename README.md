@@ -155,7 +155,6 @@ on:
     tags: '*'
   pull_request:
 
-
 permissions:
   contents: read
   actions: write
@@ -178,7 +177,6 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
-
 
 permissions:
   contents: write
@@ -230,6 +228,7 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
 permissions:
   contents: write
   pull-requests: write
