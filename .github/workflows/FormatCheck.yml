@@ -3,6 +3,11 @@ name: "Reusable Format Checking Workflow"
 on:
   workflow_call:
     inputs:
+      directory:
+        description: "The directory on which ITensorFormatter needs to be run"
+        default: "."
+        required: false
+        type: string
       julia-version:
         description: "Julia version"
         default: "1"
@@ -68,7 +73,7 @@ jobs:
         id: format
         run: |
           set +e
-          itfmt .
+          itfmt "${{ inputs.directory }}"
           FORMAT_EXIT=$?
           if [ $FORMAT_EXIT -ne 0 ]; then
             echo "exit_code=2" >> $GITHUB_OUTPUT
