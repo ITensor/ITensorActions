@@ -139,7 +139,7 @@ jobs:
 
 ## Formatting
 
-The formatting workflows allow you to customize which directories are checked, so you can specify only the directories you want. Use the `directory` input to set the directory for formatting (default is the root directory `.`).
+The formatting workflows allow you to customize which directories are checked, so you can specify only the directories you want. Use the `directory` input to set the directory or directories for formatting (default is the root directory `.`). You can specify multiple directories, e.g. `src test`, and all will be checked by the formatter.
 
 There are three workflows available: one for simply verifying the formatting, one for additionally applying suggested changes, and one that makes a PR to the repository formatting the code in the repository.
 
