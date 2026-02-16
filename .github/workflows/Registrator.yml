@@ -10,7 +10,8 @@ on:
         type: string
       localregistry:
         description: "Local registry repo (owner/name) used when the package is not in General."
-        required: true
+        required: false
+        default: ""
         type: string
     secrets:
       REGISTRATOR_KEY:
@@ -29,6 +30,8 @@ jobs:
           arch: ${{ runner.arch }}
 
       - uses: julia-actions/cache@v2
+        with:
+          delete-old-caches: false
 
       - name: Checkout package
         uses: actions/checkout@v4
@@ -36,7 +39,7 @@ jobs:
           path: package
           fetch-depth: 0
 
-      - name: Decide route (General vs local) + semver-breaking
+      - name: Decide route (General vs local) + validate version bump
         id: meta
         env:
           OLD_REF: ${{ github.event.before }}
@@ -45,53 +48,91 @@ jobs:
           using TOML
           import Pkg
 
+          function parse_version(s::AbstractString, label::AbstractString)
+              try
+                  return VersionNumber(s)
+              catch err
+                  error("Invalid $label version '$s' in Project.toml: $err")
+              end
+          end
+
+          function valid_bump(o::VersionNumber, n::VersionNumber)
+              n > o || return false, "new version must be greater than old version"
+
+              if n.major == o.major && n.minor == o.minor
+                  return (n.patch == o.patch + 1), "expected patch bump by 1"
+              elseif n.major == o.major
+                  return (n.minor == o.minor + 1 && n.patch == 0), "expected minor bump by 1 with patch reset to 0"
+              else
+                  return (n.major == o.major + 1 && n.minor == 0 && n.patch == 0), "expected major bump by 1 with minor/patch reset to 0"
+              end
+          end
+
           new = TOML.parsefile("package/Project.toml")
           uuid = get(new, "uuid", "")
-          newv = get(new, "version", "")
+          newv_str = get(new, "version", "")
 
+          isempty(uuid) && error("Project.toml is missing uuid")
+          isempty(newv_str) && error("Project.toml is missing version")
+
+          newv = parse_version(newv_str, "new")
+
+          # Determine a previous ref for comparing Project.toml versions
           old_ref = get(ENV, "OLD_REF", "")
           if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
-            old_ref = "HEAD^"
+              try
+                  old_ref = readchomp(`git -C package rev-parse HEAD^`)
+              catch
+                  old_ref = ""
+              end
           end
 
-          oldv = ""
-          try
-            old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
-            oldv = get(TOML.parse(old_toml), "version", "")
-          catch
+          oldv_str = ""
+          if !isempty(old_ref)
+              try
+                  old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
+                  oldv_str = get(TOML.parse(old_toml), "version", "")
+              catch err
+                  error("Could not read Project.toml at ref '$old_ref' to validate version bump: $err")
+              end
           end
 
-          bumped = !isempty(oldv) && !isempty(newv) && oldv != newv
           route = "none"
           is_breaking = false
 
-          if bumped
-            # SemVer-breaking rule:
-            #   0.x.y -> 0.(x+1).* is breaking
-            #   x.y.z -> (x+1).*.* is breaking (x >= 1)
-            try
-              o = VersionNumber(oldv)
-              n = VersionNumber(newv)
-              is_breaking = (o.major == 0) ? (n.major == 0 && n.minor > o.minor) : (n.major > o.major)
-            catch
-              is_breaking = false
-            end
+          if !isempty(oldv_str) && oldv_str == newv_str
+              route = "none"
+          else
+              if !isempty(oldv_str)
+                  oldv = parse_version(oldv_str, "old")
+                  ok, why = valid_bump(oldv, newv)
+                  ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
 
-            ENV["JULIA_PKG_SERVER"] = ""
-            Pkg.Registry.add("General")
+                  # Breaking if: major bump OR (0.x) minor bump OR 0.x -> 1.0.0
+                  is_breaking = (newv.major > oldv.major) || (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
+              end
 
-            general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
-            general = TOML.parsefile(general_toml)
-            in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
+              ENV["JULIA_PKG_SERVER"] = ""
+              Pkg.Registry.add("General")
 
-            route = in_general ? "general" : "local"
+              general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
+              general = TOML.parsefile(general_toml)
+              in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
+
+              route = in_general ? "general" : "local"
           end
 
           open(ENV["GITHUB_OUTPUT"], "a") do io
-            println(io, "route=$route")
-            println(io, "new_version=$newv")
-            println(io, "is_breaking=$is_breaking")
+              println(io, "route=$route")
+              println(io, "new_version=$newv_str")
+              println(io, "is_breaking=$is_breaking")
           end
+
+      - name: Validate local registry input
+        if: steps.meta.outputs.route == 'local' && inputs.localregistry == ''
+        run: |
+          echo "inputs.localregistry is required when the package is not in General." >&2
+          exit 1
 
       - name: Trigger Registrator (General)
         if: steps.meta.outputs.route == 'general'
@@ -116,7 +157,7 @@ jobs:
 
             await github.rest.repos.createCommitComment({ owner, repo, commit_sha: sha, body });
 
-      # ---- Local registry path (unchanged behavior) ----
+      # ---- Local registry path ----
 
       - name: Checkout local registry
         if: steps.meta.outputs.route == 'local'
@@ -128,12 +169,13 @@ jobs:
 
       - name: Update local registry
         if: steps.meta.outputs.route == 'local'
-        shell: julia --project --color=yes {0}
+        shell: julia --color=yes {0}
         run: |
           import Pkg
-          Pkg.add(; name="LocalRegistry",
-                   uuid="89398ba2-070a-4b16-a995-9893c55d93cf",
-                   version="0.5.7")
+          Pkg.activate(mktempdir())
+          Pkg.add(Pkg.PackageSpec(name="LocalRegistry",
+                                  uuid="89398ba2-070a-4b16-a995-9893c55d93cf",
+                                  version="0.5.7"))
           using LocalRegistry
           register("./package"; registry="./registry", commit=false, push=false)
 
