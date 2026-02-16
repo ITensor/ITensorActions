@@ -4,13 +4,21 @@ on:
   workflow_call:
     inputs:
       localregistry:
-        description: 'URLs of the local registry where the package should be registered.
-                      Specified by providing the url (https/ssh) to the Github repositories as a newline (\n) seperated list.'
+        description: 'URL of the local registry repo (owner/name), e.g. ITensor/ITensorRegistry.'
         required: true
         type: string
+      julia-version:
+        description: "Julia version to use"
+        required: false
+        type: string
+        default: "1"
     secrets:
       REGISTRATOR_KEY:
         required: true
+
+permissions:
+  contents: "write"        # needed for commit comments + create-pull-request
+  pull-requests: "write"   # create-pull-request may require this depending on org settings
 
 jobs:
   registrator:
@@ -21,30 +29,144 @@ jobs:
         id: julia_in_path
         run: which julia
         continue-on-error: true
+
       - name: Install Julia, but only if it is not already available in the PATH
         uses: julia-actions/setup-julia@v2
         with:
           version: "${{ inputs.julia-version }}"
           arch: ${{ runner.arch }}
         if: steps.julia_in_path.outcome != 'success'
+
+      - name: Checkout package
+        uses: actions/checkout@v4
+        with:
+          path: package
+          fetch-depth: 2  # needed to read HEAD^:Project.toml
+
+      - name: Read uuid/version, detect bump, and determine semver-breaking
+        id: meta
+        shell: julia --color=yes {0}
+        run: |
+          using TOML
+
+          function parse_ver(v::AbstractString)
+            m = match(r"^(\d+)\.(\d+)\.(\d+)", v)
+            m === nothing && return nothing
+            return (parse(Int, m.captures[1]),
+                    parse(Int, m.captures[2]),
+                    parse(Int, m.captures[3]))
+          end
+
+          function toml_at(ref::String)
+            readchomp(`git -C package show $(ref):Project.toml`)
+          end
+
+          now = TOML.parsefile("package/Project.toml")
+          uuid = get(now, "uuid", "")
+          newv = get(now, "version", "")
+
+          oldv = ""
+          bumped = false
+          is_breaking = false
+
+          # If HEAD^ doesn't exist (e.g. first commit), do nothing.
+          try
+            old = TOML.parse(toml_at("HEAD^"))
+            oldv = get(old, "version", "")
+            bumped = !isempty(oldv) && !isempty(newv) && oldv != newv
+
+            if bumped
+              o = parse_ver(oldv)
+              n = parse_ver(newv)
+              if o !== nothing && n !== nothing
+                (omaj, omin, _) = o
+                (nmaj, nmin, _) = n
+                if omaj == 0
+                  # breaking if 0.x.y -> 0.(x+1).*
+                  is_breaking = (nmaj == 0) && (nmin > omin)
+                else
+                  # breaking if x.y.z -> (x+1).*.*
+                  is_breaking = (nmaj > omaj)
+                end
+              end
+            end
+          catch
+            bumped = false
+            is_breaking = false
+          end
+
+          open(ENV["GITHUB_OUTPUT"], "a") do io
+            println(io, "uuid=", uuid)
+            println(io, "old_version=", oldv)
+            println(io, "new_version=", newv)
+            println(io, "version_bumped=", bumped)
+            println(io, "is_breaking=", is_breaking)
+          end
+
+      - name: Stop if version did not bump
+        if: steps.meta.outputs.version_bumped != 'true'
+        run: echo "No version bump; nothing to register."
+
+      - name: Check if UUID is in General
+        id: general
+        if: steps.meta.outputs.version_bumped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REGISTRATOR_KEY }}
+          UUID: ${{ steps.meta.outputs.uuid }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          total=$(gh api "/search/code?q=${UUID}+repo:JuliaRegistries/General+path:Registry.toml" --jq '.total_count' || echo 0)
+          if [ "${total}" -gt 0 ]; then
+            echo "in_general=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_general=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Registrator for General (commit comment)
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REGISTRATOR_KEY }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          NEWVER: ${{ steps.meta.outputs.new_version }}
+          IS_BREAKING: ${{ steps.meta.outputs.is_breaking }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject=$(git -C package log -1 --pretty=%s)
+
+          if [ "$IS_BREAKING" = "true" ]; then
+            # AutoMerge requires release notes that mention "breaking" (or "changelog") for breaking releases.
+            body="@JuliaRegistrator register
+
+Release notes:
+- breaking: ${subject} (v${NEWVER})"
+          else
+            body="@JuliaRegistrator register"
+          fi
+
+          gh api -X POST "repos/${REPO}/commits/${SHA}/comments" -f body="$body"
+
+      # ---- Local registry path (existing behavior) ----
+
       - name: "Add the General registry via Git"
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general != 'true'
         run: |
           import Pkg
           ENV["JULIA_PKG_SERVER"] = ""
           Pkg.Registry.add("General")
         shell: julia --color=yes {0}
 
-      - name: Checkout package
-        uses: actions/checkout@v4
-        with:
-          path: package
       - name: Checkout local registry
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general != 'true'
         uses: actions/checkout@v4
         with:
           repository: "${{ inputs.localregistry }}"
           path: registry
 
       - name: Install LocalRegistry.jl
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general != 'true'
         run: |
           import Pkg
           name = "LocalRegistry"
@@ -54,6 +176,7 @@ jobs:
         shell: julia --project --color=yes {0}
 
       - name: Update local registry
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general != 'true'
         run: |
           using LocalRegistry
           package = "./package"
@@ -62,6 +185,7 @@ jobs:
         shell: julia --project --color=yes {0}
 
       - name: Create PR to registry
+        if: steps.meta.outputs.version_bumped == 'true' && steps.general.outputs.in_general != 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           path: registry
