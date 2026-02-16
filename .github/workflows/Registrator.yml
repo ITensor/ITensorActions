@@ -5,8 +5,8 @@ on:
     inputs:
       julia-version:
         description: "Julia version"
-        default: "1"
         required: false
+        default: "1"
         type: string
       localregistry:
         description: "Local registry repo (owner/name) used when the package is not in General."
@@ -20,18 +20,14 @@ jobs:
   registrator:
     name: "Register package version"
     runs-on: ubuntu-latest
+
     steps:
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
         with:
           version: "${{ inputs.julia-version }}"
 
-      - name: "Add the General registry via Git"
-        run: |
-          import Pkg
-          ENV["JULIA_PKG_SERVER"] = ""
-          Pkg.Registry.add("General")
-        shell: julia --color=yes {0}
+      - uses: julia-actions/cache@v2
 
       - name: Checkout package
         uses: actions/checkout@v4
@@ -39,18 +35,21 @@ jobs:
           path: package
           fetch-depth: 0
 
-      - name: "Detect version bump, semver-breaking, and whether UUID is in General"
+      - name: Decide route (General vs local) + semver-breaking
         id: meta
         env:
           OLD_REF: ${{ github.event.before }}
         shell: julia --color=yes {0}
         run: |
-          import TOML
+          using TOML
+          import Pkg
 
+          # New metadata
           new = TOML.parsefile("package/Project.toml")
           uuid = get(new, "uuid", "")
           newv = get(new, "version", "")
 
+          # Old metadata (prefer "before push" SHA; fallback to HEAD^)
           old_ref = get(ENV, "OLD_REF", "")
           if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
             old_ref = "HEAD^"
@@ -64,10 +63,15 @@ jobs:
             oldv = ""
           end
 
-          bumped = !isempty(oldv) && !isempty(newv) && oldv != newv
+          bumped = !isempty(oldv) && !isempty(newv) && (oldv != newv)
 
+          route = "none"
           is_breaking = false
+
           if bumped
+            # SemVer-breaking rule:
+            #   0.x.y -> 0.(x+1).*  is breaking
+            #   x.y.z -> (x+1).*.*  is breaking (x >= 1)
             try
               o = VersionNumber(oldv)
               n = VersionNumber(newv)
@@ -75,71 +79,103 @@ jobs:
             catch
               is_breaking = false
             end
-          end
 
-          general_registry_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
-          general = TOML.parsefile(general_registry_toml)
-          in_general = haskey(general["packages"], uuid)
+            # Ensure General is available locally (via git, not Pkg server)
+            ENV["JULIA_PKG_SERVER"] = ""
+            Pkg.Registry.add("General")
+
+            # Determine if UUID is in General
+            general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
+            general = TOML.parsefile(general_toml)
+            in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
+
+            route = in_general ? "general" : "local"
+          end
 
           open(ENV["GITHUB_OUTPUT"], "a") do io
+            println(io, "route=$route")
             println(io, "new_version=$newv")
-            println(io, "version_bumped=$bumped")
             println(io, "is_breaking=$is_breaking")
-            println(io, "in_general=$in_general")
           end
 
-      - name: "Trigger Registrator (General)"
-        if: steps.meta.outputs.version_bumped == 'true' && steps.meta.outputs.in_general == 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.REGISTRATOR_KEY }}
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const sha = context.sha;
+      - name: Trigger Registrator (General)
+        if: steps.meta.outputs.route == 'general'
+        env:
+          TOKEN: ${{ secrets.REGISTRATOR_KEY }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          NEWVER: ${{ steps.meta.outputs.new_version }}
+          IS_BREAKING: ${{ steps.meta.outputs.is_breaking }}
+        shell: julia --color=yes {0}
+        run: |
+          using Downloads
 
-            const newv = "${{ steps.meta.outputs.new_version }}";
-            const isBreaking = "${{ steps.meta.outputs.is_breaking }}" === "true";
+          function json_escape(s::AbstractString)
+            io = IOBuffer()
+            for c in s
+              if c == '\\'
+                print(io, "\\\\")
+              elseif c == '"'
+                print(io, "\\\"")
+              elseif c == '\n'
+                print(io, "\\n")
+              elseif c == '\r'
+                print(io, "\\r")
+              elseif c == '\t'
+                print(io, "\\t")
+              else
+                print(io, c)
+              end
+            end
+            return String(take!(io))
+          end
 
-            let body = "@JuliaRegistrator register";
-            if (isBreaking) {
-              const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: sha });
-              const subject = commit.commit.message.split("\n")[0];
-              body += `\n\nRelease notes:\n- breaking: ${subject} (v${newv})`;
-            }
+          subject = readchomp(`git -C package log -1 --pretty=%s`)
+          newv = ENV["NEWVER"]
+          is_breaking = (ENV["IS_BREAKING"] == "true")
 
-            await github.rest.repos.createCommitComment({ owner, repo, commit_sha: sha, body });
+          body = "@JuliaRegistrator register"
+          if is_breaking
+            # Only include release notes for breaking releases; must mention "breaking".
+            body *= "\n\nRelease notes:\n- breaking: $(subject) (v$(newv))"
+          end
 
-      # ---- Local registry path (unchanged behavior, just gated) ----
+          url = "https://api.github.com/repos/$(ENV["REPO"])/commits/$(ENV["SHA"])/comments"
+          payload = "{\"body\":\"$(json_escape(body))\"}"
+
+          headers = [
+            "Accept" => "application/vnd.github+json",
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer $(ENV["TOKEN"])",
+            "X-GitHub-Api-Version" => "2022-11-28",
+            "User-Agent" => "ITensorActions-Registrator"
+          ]
+
+          Downloads.request(url; method="POST", headers=headers, data=payload)
+
+      # ---- Local registry path (unchanged behavior) ----
 
       - name: Checkout local registry
-        if: steps.meta.outputs.version_bumped == 'true' && steps.meta.outputs.in_general != 'true'
+        if: steps.meta.outputs.route == 'local'
         uses: actions/checkout@v4
         with:
           repository: "${{ inputs.localregistry }}"
           path: registry
-
-      - name: Install LocalRegistry.jl
-        if: steps.meta.outputs.version_bumped == 'true' && steps.meta.outputs.in_general != 'true'
-        run: |
-          import Pkg
-          name = "LocalRegistry"
-          uuid = "89398ba2-070a-4b16-a995-9893c55d93cf"
-          version = "0.5.7"
-          Pkg.add(; name, uuid, version)
-        shell: julia --project --color=yes {0}
+          token: "${{ secrets.REGISTRATOR_KEY }}"
 
       - name: Update local registry
-        if: steps.meta.outputs.version_bumped == 'true' && steps.meta.outputs.in_general != 'true'
-        run: |
-          using LocalRegistry
-          package = "./package"
-          registry = "./registry"
-          register(package; registry, commit=false, push=false)
+        if: steps.meta.outputs.route == 'local'
         shell: julia --project --color=yes {0}
+        run: |
+          import Pkg
+          Pkg.add(; name="LocalRegistry",
+                   uuid="89398ba2-070a-4b16-a995-9893c55d93cf",
+                   version="0.5.7")
+          using LocalRegistry
+          register("./package"; registry="./registry", commit=false, push=false)
 
       - name: Create PR to registry
-        if: steps.meta.outputs.version_bumped == 'true' && steps.meta.outputs.in_general != 'true'
+        if: steps.meta.outputs.route == 'local'
         uses: peter-evans/create-pull-request@v7
         with:
           path: registry
