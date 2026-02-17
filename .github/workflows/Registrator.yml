@@ -14,22 +14,15 @@ on:
         default: ""
         type: string
     secrets:
-      # Only needed for the local-registry path (checkout + PR). Not needed for General.
+      # Only needed for the local-registry path (checkout + PR).
+      # Not needed for General (we use github.token there).
       REGISTRATOR_KEY:
         required: false
 
 jobs:
-  meta:
-    name: "Decide whether to register"
+  registrator:
+    name: "Register package version"
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      route: ${{ steps.meta.outputs.route }}
-      new_version: ${{ steps.meta.outputs.new_version }}
-      is_breaking: ${{ steps.meta.outputs.is_breaking }}
-      subject: ${{ steps.meta.outputs.subject }}
-      skip_reason: ${{ steps.meta.outputs.skip_reason }}
 
     steps:
       - name: "Setup Julia ${{ inputs.julia-version }}"
@@ -87,7 +80,7 @@ jobs:
               newv = parse_version(newv_str, "new")
               subject = replace(readchomp(`git -C package log -1 --pretty=%s HEAD`), ['\n','\r'] => ' ')
 
-              # Determine a previous ref for comparing Project.toml versions
+              # Determine previous ref
               old_ref = get(ENV, "OLD_REF", "")
               if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
                   try
@@ -103,7 +96,7 @@ jobs:
                       old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
                       oldv_str = get(TOML.parse(old_toml), "version", "")
                   catch err
-                      # Don't fail if Project.toml isn't available at old_ref.
+                      # Don't hard-fail on missing old Project.toml; just skip strict validation.
                       println(stderr, "Warning: could not read Project.toml at ref '$old_ref' (treating as no prior version): $err")
                       oldv_str = ""
                   end
@@ -118,7 +111,7 @@ jobs:
 
                   if newv == oldv
                       route = "none"
-                      skip_reason = "Project.toml version unchanged (v$newv_str)"
+                      skip_reason = "Project.toml version unchanged ($newv_str)"
                   elseif newv < oldv
                       route = "none"
                       skip_reason = "Project.toml version decreased ($oldv_str -> $newv_str); skipping registration"
@@ -140,7 +133,7 @@ jobs:
                       route = in_general ? "general" : "local"
                   end
               else
-                  # No prior version found; allow registration (first registration / old ref missing Project.toml)
+                  # No prior version found to compare against; proceed to route decision.
                   ENV["JULIA_PKG_SERVER"] = ""
                   Pkg.Registry.add("General")
 
@@ -160,49 +153,28 @@ jobs:
               end
           end
 
-      - name: Summary (not registering)
+      - name: Summary (skipped)
         if: steps.meta.outputs.route == 'none'
         run: |
-          echo "Registrator not run: ${{ steps.meta.outputs.skip_reason }}" >> "$GITHUB_STEP_SUMMARY"
-
-  registrator:
-    name: "Register package version"
-    runs-on: ubuntu-latest
-    needs: meta
-    if: needs.meta.outputs.route != 'none'
-    permissions:
-      contents: read
-
-    steps:
-      - name: Validate local registry input
-        if: needs.meta.outputs.route == 'local' && inputs.localregistry == ''
-        run: |
-          echo "inputs.localregistry is required when the package is not in General." >&2
-          exit 1
-
-      - name: Validate REGISTRATOR_KEY (local registry)
-        if: needs.meta.outputs.route == 'local' && secrets.REGISTRATOR_KEY == ''
-        run: |
-          echo "secrets.REGISTRATOR_KEY is required for the local registry path (checkout + PR)." >&2
-          exit 1
+          echo "Registrator skipped: ${{ steps.meta.outputs.skip_reason }}" >> "$GITHUB_STEP_SUMMARY"
 
       # ---- General registry path ----
 
       - name: Compose Registrator commit comment
-        if: needs.meta.outputs.route == 'general'
+        if: steps.meta.outputs.route == 'general'
         shell: bash
         run: |
           {
             echo "@JuliaRegistrator register"
-            if [ "${{ needs.meta.outputs.is_breaking }}" = "true" ]; then
+            if [ "${{ steps.meta.outputs.is_breaking }}" = "true" ]; then
               echo ""
               echo "Release notes:"
-              echo "- breaking: ${{ needs.meta.outputs.subject }} (v${{ needs.meta.outputs.new_version }})"
+              echo "- breaking: ${{ steps.meta.outputs.subject }} (v${{ steps.meta.outputs.new_version }})"
             fi
           } > registrator-comment.md
 
       - name: Trigger Registrator (General)
-        if: needs.meta.outputs.route == 'general'
+        if: steps.meta.outputs.route == 'general'
         uses: peter-evans/commit-comment@v4
         with:
           token: ${{ github.token }}
@@ -210,27 +182,25 @@ jobs:
 
       # ---- Local registry path ----
 
-      - name: "Setup Julia ${{ inputs.julia-version }}"
-        if: needs.meta.outputs.route == 'local'
-        uses: julia-actions/setup-julia@v2
-        with:
-          version: "${{ inputs.julia-version }}"
-          arch: ${{ runner.arch }}
+      - name: Validate local registry input
+        if: steps.meta.outputs.route == 'local' && inputs.localregistry == ''
+        run: |
+          echo "inputs.localregistry is required when the package is not in General." >&2
+          exit 1
 
-      - uses: julia-actions/cache@v2
-        if: needs.meta.outputs.route == 'local'
-        with:
-          delete-old-caches: false
-
-      - name: Checkout package
-        if: needs.meta.outputs.route == 'local'
-        uses: actions/checkout@v4
-        with:
-          path: package
-          fetch-depth: 0
+      - name: Validate REGISTRATOR_KEY (local registry)
+        if: steps.meta.outputs.route == 'local'
+        env:
+          REGISTRATOR_KEY: ${{ secrets.REGISTRATOR_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$REGISTRATOR_KEY" ]; then
+            echo "secrets.REGISTRATOR_KEY is required for the local registry path (checkout + PR)." >&2
+            exit 1
+          fi
 
       - name: Checkout local registry
-        if: needs.meta.outputs.route == 'local'
+        if: steps.meta.outputs.route == 'local'
         uses: actions/checkout@v4
         with:
           repository: "${{ inputs.localregistry }}"
@@ -238,7 +208,7 @@ jobs:
           token: "${{ secrets.REGISTRATOR_KEY }}"
 
       - name: Update local registry
-        if: needs.meta.outputs.route == 'local'
+        if: steps.meta.outputs.route == 'local'
         shell: julia --color=yes {0}
         run: |
           import Pkg
@@ -250,7 +220,7 @@ jobs:
           register("./package"; registry="./registry", commit=false, push=false)
 
       - name: Create PR to registry
-        if: needs.meta.outputs.route == 'local'
+        if: steps.meta.outputs.route == 'local'
         uses: peter-evans/create-pull-request@v7
         with:
           path: registry
