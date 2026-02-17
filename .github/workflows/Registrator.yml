@@ -68,64 +68,66 @@ jobs:
               end
           end
 
-          new = TOML.parsefile("package/Project.toml")
-          uuid = get(new, "uuid", "")
-          newv_str = get(new, "version", "")
+          let # scope to avoid warnings about local/global variables
+            new = TOML.parsefile("package/Project.toml")
+            uuid = get(new, "uuid", "")
+            newv_str = get(new, "version", "")
 
-          isempty(uuid) && error("Project.toml is missing uuid")
-          isempty(newv_str) && error("Project.toml is missing version")
+            isempty(uuid) && error("Project.toml is missing uuid")
+            isempty(newv_str) && error("Project.toml is missing version")
 
-          newv = parse_version(newv_str, "new")
+            newv = parse_version(newv_str, "new")
 
-          # Determine a previous ref for comparing Project.toml versions
-          old_ref = get(ENV, "OLD_REF", "")
-          if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
-              try
-                  old_ref = readchomp(`git -C package rev-parse HEAD^`)
-              catch
-                  old_ref = ""
-              end
-          end
+            # Determine a previous ref for comparing Project.toml versions
+            old_ref = get(ENV, "OLD_REF", "")
+            if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
+                try
+                    old_ref = readchomp(`git -C package rev-parse HEAD^`)
+                catch
+                    old_ref = ""
+                end
+            end
 
-          oldv_str = ""
-          if !isempty(old_ref)
-              try
-                  old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
-                  oldv_str = get(TOML.parse(old_toml), "version", "")
-              catch err
-                  error("Could not read Project.toml at ref '$old_ref' to validate version bump: $err")
-              end
-          end
+            oldv_str = ""
+            if !isempty(old_ref)
+                try
+                    old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
+                    oldv_str = get(TOML.parse(old_toml), "version", "")
+                catch err
+                    error("Could not read Project.toml at ref '$old_ref' to validate version bump: $err")
+                end
+            end
 
-          route = "none"
-          is_breaking = false
+            route = "none"
+            is_breaking = false
 
-          if !isempty(oldv_str) && oldv_str == newv_str
-              route = "none"
-          else
-              if !isempty(oldv_str)
-                  oldv = parse_version(oldv_str, "old")
-                  ok, why = valid_bump(oldv, newv)
-                  ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
+            if !isempty(oldv_str) && oldv_str == newv_str
+                route = "none"
+            else
+                if !isempty(oldv_str)
+                    oldv = parse_version(oldv_str, "old")
+                    ok, why = valid_bump(oldv, newv)
+                    ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
 
-                  # Breaking if: major bump OR (0.x) minor bump OR 0.x -> 1.0.0
-                  is_breaking = (newv.major > oldv.major) || (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
-              end
+                    # Breaking if: major bump OR (0.x) minor bump OR 0.x -> 1.0.0
+                    is_breaking = (newv.major > oldv.major) || (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
+                end
 
-              ENV["JULIA_PKG_SERVER"] = ""
-              Pkg.Registry.add("General")
+                ENV["JULIA_PKG_SERVER"] = ""
+                Pkg.Registry.add("General")
 
-              general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
-              general = TOML.parsefile(general_toml)
-              in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
+                general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
+                general = TOML.parsefile(general_toml)
+                in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
 
-              route = in_general ? "general" : "local"
-          end
+                route = in_general ? "general" : "local"
+            end
 
-          open(ENV["GITHUB_OUTPUT"], "a") do io
-              println(io, "route=$route")
-              println(io, "new_version=$newv_str")
-              println(io, "is_breaking=$is_breaking")
+            open(ENV["GITHUB_OUTPUT"], "a") do io
+                println(io, "route=$route")
+                println(io, "new_version=$newv_str")
+                println(io, "is_breaking=$is_breaking")
+            end
           end
 
       - name: Validate local registry input
