@@ -14,8 +14,7 @@ on:
         default: ""
         type: string
     secrets:
-      # Only needed for the local-registry path (checkout + PR).
-      # Not needed for General (we use github.token there).
+      # Only needed for the local-registry path (checkout + PR). Not needed for General.
       REGISTRATOR_KEY:
         required: false
 
@@ -156,7 +155,10 @@ jobs:
       - name: Summary (skipped)
         if: steps.meta.outputs.route == 'none'
         run: |
-          echo "Registrator skipped: ${{ steps.meta.outputs.skip_reason }}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Registrator"
+            echo "- Skipped: ${{ steps.meta.outputs.skip_reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ---- General registry path ----
 
@@ -175,10 +177,25 @@ jobs:
 
       - name: Trigger Registrator (General)
         if: steps.meta.outputs.route == 'general'
+        id: cc
         uses: peter-evans/commit-comment@v4
         with:
           token: ${{ github.token }}
           body-path: registrator-comment.md
+
+      - name: Summary (General)
+        if: steps.meta.outputs.route == 'general'
+        run: |
+          {
+            echo "### Registrator"
+            echo "- Route: General"
+            echo "- Version: v${{ steps.meta.outputs.new_version }}"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Commit comment id: ${{ steps.cc.outputs.comment-id }}"
+            if [ "${{ steps.meta.outputs.is_breaking }}" = "true" ]; then
+              echo "- Marked as breaking"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ---- Local registry path ----
 
@@ -221,6 +238,7 @@ jobs:
 
       - name: Create PR to registry
         if: steps.meta.outputs.route == 'local'
+        id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
           path: registry
@@ -228,3 +246,19 @@ jobs:
           title: "New package version: ${{ github.repository }}"
           token: "${{ secrets.REGISTRATOR_KEY }}"
           delete-branch: true
+
+      - name: Summary (Local registry)
+        if: steps.meta.outputs.route == 'local'
+        run: |
+          {
+            echo "### Registrator"
+            echo "- Route: Local registry (\`${{ inputs.localregistry }}\`)"
+            echo "- Version: v${{ steps.meta.outputs.new_version }}"
+            if [ -n "${{ steps.cpr.outputs.pull-request-url }}" ]; then
+              echo "- PR (${{
+                steps.cpr.outputs.pull-request-operation
+              }}): ${{ steps.cpr.outputs.pull-request-url }}"
+            else
+              echo "- PR: none (no changes)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
