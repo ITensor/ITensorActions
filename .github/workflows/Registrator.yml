@@ -25,7 +25,9 @@ jobs:
       route: ${{ steps.meta.outputs.route }}
       new_version: ${{ steps.meta.outputs.new_version }}
       is_breaking: ${{ steps.meta.outputs.is_breaking }}
+      subject: ${{ steps.meta.outputs.subject }}
       skip_reason: ${{ steps.meta.outputs.skip_reason }}
+
     steps:
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -61,8 +63,7 @@ jobs:
           end
 
           function valid_bump(o::VersionNumber, n::VersionNumber)
-              n > o || return false, "new version must be greater than old version"
-
+              # Only called when n > o
               if n.major == o.major && n.minor == o.minor
                   return (n.patch == o.patch + 1), "expected patch bump by 1"
               elseif n.major == o.major
@@ -82,6 +83,8 @@ jobs:
 
               newv = parse_version(newv_str, "new")
 
+              subject = replace(readchomp(`git -C package log -1 --pretty=%s HEAD`), ['\n','\r'] => ' ')
+
               # Determine a previous ref for comparing Project.toml versions
               old_ref = get(ENV, "OLD_REF", "")
               if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
@@ -98,7 +101,7 @@ jobs:
                       old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
                       oldv_str = get(TOML.parse(old_toml), "version", "")
                   catch err
-                      # Don't fail if Project.toml doesn't exist at old_ref (e.g. multi-commit push where it was added).
+                      # Don't fail if Project.toml isn't available at old_ref
                       println(stderr, "Warning: could not read Project.toml at ref '$old_ref' (treating as no prior version): $err")
                       oldv_str = ""
                   end
@@ -108,19 +111,34 @@ jobs:
               is_breaking = false
               skip_reason = ""
 
-              if !isempty(oldv_str) && oldv_str == newv_str
-                  route = "none"
-                  skip_reason = "Project.toml version unchanged (v$newv_str)"
-              else
-                  if !isempty(oldv_str)
-                      oldv = parse_version(oldv_str, "old")
+              if !isempty(oldv_str)
+                  oldv = parse_version(oldv_str, "old")
+
+                  if newv == oldv
+                      route = "none"
+                      skip_reason = "Project.toml version unchanged (v$newv_str)"
+                  elseif newv < oldv
+                      route = "none"
+                      skip_reason = "Project.toml version decreased ($oldv_str -> $newv_str); skipping registration"
+                  else
                       ok, why = valid_bump(oldv, newv)
                       ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
 
                       # Breaking if: major bump OR (0.x) minor bump
-                      is_breaking = (newv.major > oldv.major) || (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
-                  end
+                      is_breaking = (newv.major > oldv.major) ||
+                                    (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
 
+                      ENV["JULIA_PKG_SERVER"] = ""
+                      Pkg.Registry.add("General")
+
+                      general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
+                      general = TOML.parsefile(general_toml)
+                      in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
+
+                      route = in_general ? "general" : "local"
+                  end
+              else
+                  # No prior version found; allow registration (first registration / old ref missing Project.toml)
                   ENV["JULIA_PKG_SERVER"] = ""
                   Pkg.Registry.add("General")
 
@@ -135,20 +153,22 @@ jobs:
                   println(io, "route=$route")
                   println(io, "new_version=$newv_str")
                   println(io, "is_breaking=$is_breaking")
+                  println(io, "subject=$subject")
                   println(io, "skip_reason=$skip_reason")
               end
           end
 
-      - name: Summary (skipped)
+      - name: Summary (not registering)
         if: steps.meta.outputs.route == 'none'
         run: |
-          echo "Registrator skipped: ${{ steps.meta.outputs.skip_reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Registrator not run: ${{ steps.meta.outputs.skip_reason }}" >> "$GITHUB_STEP_SUMMARY"
 
   registrator:
     name: "Register package version"
     runs-on: ubuntu-latest
     needs: meta
     if: needs.meta.outputs.route != 'none'
+
     steps:
       - name: Validate local registry input
         if: needs.meta.outputs.route == 'local' && inputs.localregistry == ''
@@ -159,6 +179,10 @@ jobs:
       - name: Trigger Registrator (General)
         if: needs.meta.outputs.route == 'general'
         uses: actions/github-script@v7
+        env:
+          NEWV: ${{ needs.meta.outputs.new_version }}
+          IS_BREAKING: ${{ needs.meta.outputs.is_breaking }}
+          SUBJECT: ${{ needs.meta.outputs.subject }}
         with:
           github-token: ${{ secrets.REGISTRATOR_KEY }}
           script: |
@@ -166,15 +190,15 @@ jobs:
             const repo = context.repo.repo;
             const sha = context.sha;
 
-            const newv = "${{ needs.meta.outputs.new_version }}";
-            const isBreaking = "${{ needs.meta.outputs.is_breaking }}" === "true";
+            const newv = process.env.NEWV || "";
+            const isBreaking = (process.env.IS_BREAKING || "") === "true";
+            const subject = (process.env.SUBJECT || "").trim();
 
             let body = "@JuliaRegistrator register";
 
             if (isBreaking) {
-              const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: sha });
-              const subject = commit.commit.message.split("\n")[0];
-              body += `\n\nRelease notes:\n- breaking: ${subject} (v${newv})`;
+              const note = subject.length ? subject : "breaking changes";
+              body += `\n\nRelease notes:\n- breaking: ${note} (v${newv})`;
             }
 
             await github.rest.repos.createCommitComment({ owner, repo, commit_sha: sha, body });
