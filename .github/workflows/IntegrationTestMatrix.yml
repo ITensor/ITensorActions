@@ -1,0 +1,64 @@
+name: "Reusable IntegrationTest Matrix Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      pkgs:
+        description: 'JSON array, e.g. ["BlockSparseArrays","DiagonalArrays"]'
+        type: string
+        required: false
+        default: ""   # if empty, use defaults below
+
+      # passthroughs to the existing single-run IntegrationTest.yml
+      julia-version:
+        type: string
+        required: false
+        default: "1"
+      localregistry:
+        type: string
+        required: false
+        default: ""
+      run-on-draft:
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      pkgs: ${{ steps.pkgs.outputs.pkgs }}
+    steps:
+      - id: pkgs
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.pkgs }}" ]; then
+            echo "pkgs=${{ inputs.pkgs }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Optional centralized defaults (edit in ITensorActions as needed):
+          case "${GITHUB_REPOSITORY}" in
+            ITensor/SparseArraysBase.jl)
+              echo 'pkgs=["BlockSparseArrays","DiagonalArrays","FusionTensors","GradedArrays"]' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "No default pkgs mapping for ${GITHUB_REPOSITORY}. Pass inputs.pkgs." >&2
+              exit 1
+              ;;
+          esac
+
+  integration:
+    name: "IntegrationTest (${{ matrix.pkg }})"
+    needs: config
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJSON(needs.config.outputs.pkgs) }}
+
+    uses: ./.github/workflows/IntegrationTest.yml
+    with:
+      pkg: ${{ matrix.pkg }}
+      julia-version: ${{ inputs.julia-version }}
+      localregistry: ${{ inputs.localregistry }}
+      run-on-draft: ${{ inputs.run-on-draft }}

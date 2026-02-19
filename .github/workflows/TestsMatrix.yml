@@ -1,0 +1,109 @@
+name: "Reusable Tests Matrix Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      julia-versions:
+        description: 'JSON array, e.g. ["lts","1"]'
+        type: string
+        required: false
+        default: '["lts","1"]'
+      oses:
+        description: 'JSON array, e.g. ["ubuntu-latest","macOS-latest","windows-latest"]'
+        type: string
+        required: false
+        default: '["ubuntu-latest","macOS-latest","windows-latest"]'
+      groups:
+        description: 'JSON array of GROUP values, e.g. ["","optional"]'
+        type: string
+        required: false
+        default: '[""]'
+
+      # passthroughs to the existing single-run Tests.yml
+      julia-arch:
+        type: string
+        required: false
+      project:
+        type: string
+        required: false
+        default: '@.'
+      self-hosted:
+        type: boolean
+        required: false
+        default: false
+      nthreads:
+        type: number
+        required: false
+        default: 1
+      cache:
+        type: boolean
+        required: false
+        default: true
+      buildpkg:
+        type: boolean
+        required: false
+        default: true
+      localregistry:
+        type: string
+        required: false
+        default: ""
+      coverage:
+        type: boolean
+        required: false
+        default: true
+      coverage-directories:
+        type: string
+        required: false
+        default: "src,ext"
+      julia-runtest-depwarn:
+        type: string
+        required: false
+        default: "yes"
+      continue-on-error:
+        type: boolean
+        required: false
+      timeout-minutes:
+        type: number
+        required: false
+        default: 60
+      run-all-on-draft:
+        type: boolean
+        required: false
+        default: false
+
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+
+jobs:
+  tests:
+    name: "Tests (${{ matrix.julia-version }}, ${{ matrix.os }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        julia-version: ${{ fromJSON(inputs.julia-versions) }}
+        os: ${{ fromJSON(inputs.oses) }}
+        group: ${{ fromJSON(inputs.groups) }}
+
+    uses: ./.github/workflows/Tests.yml
+    with:
+      julia-version: ${{ matrix.julia-version }}
+      os: ${{ matrix.os }}
+      group: ${{ matrix.group }}
+
+      julia-arch: ${{ inputs.julia-arch }}
+      project: ${{ inputs.project }}
+      self-hosted: ${{ inputs.self-hosted }}
+      nthreads: ${{ inputs.nthreads }}
+      cache: ${{ inputs.cache }}
+      buildpkg: ${{ inputs.buildpkg }}
+      localregistry: ${{ inputs.localregistry }}
+      coverage: ${{ inputs.coverage }}
+      coverage-directories: ${{ inputs.coverage-directories }}
+      julia-runtest-depwarn: ${{ inputs.julia-runtest-depwarn }}
+      continue-on-error: ${{ inputs.continue-on-error }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      run-all-on-draft: ${{ inputs.run-all-on-draft }}
+
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
