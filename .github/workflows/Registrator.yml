@@ -70,9 +70,11 @@ jobs:
 
           let
               new = TOML.parsefile("package/Project.toml")
+              name = get(new, "name", "")
               uuid = get(new, "uuid", "")
               newv_str = get(new, "version", "")
 
+              isempty(name) && error("Project.toml is missing name")
               isempty(uuid) && error("Project.toml is missing uuid")
               isempty(newv_str) && error("Project.toml is missing version")
 
@@ -145,6 +147,8 @@ jobs:
 
               open(ENV["GITHUB_OUTPUT"], "a") do io
                   println(io, "route=$route")
+                  println(io, "pkg_name=$name")
+                  println(io, "uuid=$uuid")
                   println(io, "new_version=$newv_str")
                   println(io, "is_breaking=$is_breaking")
                   println(io, "subject=$subject")
@@ -224,6 +228,39 @@ jobs:
           path: registry
           token: "${{ secrets.REGISTRATOR_KEY }}"
 
+      - name: Compose PR metadata (local registry)
+        if: steps.meta.outputs.route == 'local'
+        id: local_pr
+        env:
+          PKG_NAME: ${{ steps.meta.outputs.pkg_name }}
+          PKG_UUID: ${{ steps.meta.outputs.uuid }}
+          PKG_VERSION: ${{ steps.meta.outputs.new_version }}
+          IS_BREAKING: ${{ steps.meta.outputs.is_breaking }}
+          SUBJECT: ${{ steps.meta.outputs.subject }}
+        shell: julia --color=yes {0}
+        run: |
+          using TOML
+
+          reg = TOML.parsefile("registry/Registry.toml")
+          pkgs = get(reg, "packages", Dict{String,Any}())
+          is_new_pkg = !haskey(pkgs, ENV["PKG_UUID"])
+
+          kind = is_new_pkg ? "New package" : "New version"
+          title = "$kind: $(ENV["PKG_NAME"]) v$(ENV["PKG_VERSION"])"
+
+          body = "Commit: $(ENV["GITHUB_SHA"])"
+          if ENV["IS_BREAKING"] == "true"
+              body *= "\n\nRelease notes:\n- breaking: $(ENV["SUBJECT"]) (v$(ENV["PKG_VERSION"]))"
+          end
+
+          open(ENV["GITHUB_OUTPUT"], "a") do io
+              println(io, "title=$title")
+              println(io, "body<<EOF")
+              print(io, body)
+              println(io)
+              println(io, "EOF")
+          end
+
       - name: Update local registry
         if: steps.meta.outputs.route == 'local'
         shell: julia --color=yes {0}
@@ -243,7 +280,8 @@ jobs:
         with:
           path: registry
           branch: "registrator/${{ github.repository }}"
-          title: "New package version: ${{ github.repository }}"
+          title: "${{ steps.local_pr.outputs.title }}"
+          body: "${{ steps.local_pr.outputs.body }}"
           token: "${{ secrets.REGISTRATOR_KEY }}"
           delete-branch: true
 
