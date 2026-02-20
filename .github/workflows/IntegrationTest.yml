@@ -38,11 +38,14 @@ jobs:
         if: inputs.pkg == '__none__'
         run: echo "No downstream integration tests configured."
       - uses: actions/checkout@v4
+        if: inputs.pkg != '__none__'
       - uses: julia-actions/setup-julia@v2
+        if: inputs.pkg != '__none__'
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - uses: julia-actions/julia-buildpkg@latest
+        if: inputs.pkg != '__none__'
         with:
           localregistry: "${{ inputs.localregistry }}"
       - name: Run the downstream tests
