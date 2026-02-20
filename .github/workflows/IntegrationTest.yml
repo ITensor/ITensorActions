@@ -34,6 +34,9 @@ jobs:
         os: [ubuntu-latest]
 
     steps:
+      - name: "No downstream packages configured"
+        if: inputs.pkg == '__none__'
+        run: echo "No downstream integration tests configured."
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
@@ -43,6 +46,7 @@ jobs:
         with:
           localregistry: "${{ inputs.localregistry }}"
       - name: Run the downstream tests
+        if: inputs.pkg != '__none__'
         shell: julia --color=yes --project=downstream {0}
         run: |
           using Pkg
