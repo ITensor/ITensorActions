@@ -23,6 +23,11 @@ jobs:
     name: "Register package version"
     runs-on: ubuntu-latest
 
+    env:
+      # Prefer the commit that landed on the base branch when available (merged PRs),
+      # otherwise PR head SHA, otherwise github.sha.
+      TARGET_SHA: ${{ (github.event.pull_request && github.event.pull_request.merged && github.event.pull_request.merge_commit_sha) || (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}
+
     steps:
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -39,6 +44,7 @@ jobs:
         with:
           path: package
           fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
 
       - name: Decide route (General vs local) + validate version bump
         id: meta
@@ -185,6 +191,7 @@ jobs:
         uses: peter-evans/commit-comment@v4
         with:
           token: ${{ github.token }}
+          sha: ${{ env.TARGET_SHA }}
           body-path: registrator-comment.md
 
       - name: Summary (General)
@@ -194,7 +201,7 @@ jobs:
             echo "### Registrator"
             echo "- Route: General"
             echo "- Version: v${{ steps.meta.outputs.new_version }}"
-            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Commit: \`${{ env.TARGET_SHA }}\`"
             echo "- Commit comment id: ${{ steps.cc.outputs.comment-id }}"
             if [ "${{ steps.meta.outputs.is_breaking }}" = "true" ]; then
               echo "- Marked as breaking"
@@ -248,7 +255,7 @@ jobs:
           kind = is_new_pkg ? "New package" : "New version"
           title = "$kind: $(ENV["PKG_NAME"]) v$(ENV["PKG_VERSION"])"
 
-          body = "Commit: $(ENV["GITHUB_SHA"])"
+          body = "Commit: $(ENV["TARGET_SHA"])"
           if ENV["IS_BREAKING"] == "true"
               body *= "\n\nRelease notes:\n- breaking: $(ENV["SUBJECT"]) (v$(ENV["PKG_VERSION"]))"
           end
