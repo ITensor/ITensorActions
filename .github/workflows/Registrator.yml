@@ -24,8 +24,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Prefer the post-merge commit (merged PRs), otherwise PR head SHA, otherwise github.sha.
-      TARGET_SHA: ${{ (github.event.pull_request && (github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha)) || github.sha }}
+      # Prefer the commit that landed on the base branch when available (merged PRs),
+      # otherwise PR head SHA, otherwise github.sha.
+      TARGET_SHA: ${{ (github.event.pull_request && github.event.pull_request.merged && github.event.pull_request.merge_commit_sha) || (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}
 
     steps:
       - name: "Setup Julia ${{ inputs.julia-version }}"
