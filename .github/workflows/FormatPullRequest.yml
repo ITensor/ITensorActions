@@ -41,7 +41,7 @@ jobs:
 
       - name: Run ITensorFormatter
         run: |
-          itfmt ${{ inputs.directory }}
+          itpkgfmt ${{ inputs.directory }}
         continue-on-error: true
 
       # Detect whether any files changed (tracked files) after formatting.
