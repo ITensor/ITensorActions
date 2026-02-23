@@ -74,7 +74,7 @@ jobs:
         run: |
           set +e
           echo "Formatter will run on: ${{ inputs.directory }}"
-          itfmt ${{ inputs.directory }}
+          itpkgfmt ${{ inputs.directory }}
           FORMAT_EXIT=$?
           if [ $FORMAT_EXIT -ne 0 ]; then
             echo "exit_code=2" >> $GITHUB_OUTPUT
