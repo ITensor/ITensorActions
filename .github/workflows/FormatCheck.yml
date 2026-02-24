@@ -46,11 +46,6 @@ jobs:
           repository: ${{github.event.pull_request.head.repo.full_name}}
           fetch-depth: 0
 
-      - name: Add upstream remote
-        run: |
-          git remote add upstream https://github.com/${{ github.repository }}
-          git fetch upstream
-
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
@@ -82,10 +77,10 @@ jobs:
             exit 1
           fi
 
-          # Only report diff for files touched by the PR
-          MERGE_BASE=$(git merge-base upstream/${{ github.base_ref }} HEAD) || exit 1
-          CHANGED_FILES=$(git diff --name-only $MERGE_BASE HEAD)
-          DIFF=$(git diff -- $CHANGED_FILES)
+          # Report all changes introduced by the formatter (including newly created files).
+          # `git add -N .` makes newly created (untracked) files appear in `git diff` as additions.
+          git add -N .
+          DIFF=$(git diff)
           if [ -n "$DIFF" ]; then
             EXIT_CODE=1
           else

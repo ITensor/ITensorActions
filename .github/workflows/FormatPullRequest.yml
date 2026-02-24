@@ -49,8 +49,9 @@ jobs:
       - name: Detect formatting changes
         id: changes
         shell: bash
-        working-directory: ${{ inputs.directory }}
         run: |
+          # Include newly created (untracked) files in the change detection.
+          git add -N .
           if ! git diff --quiet; then
             echo "changes=true" >> "$GITHUB_OUTPUT"
           else
@@ -67,6 +68,11 @@ jobs:
           project = Pkg.Types.read_project(project_file)
           project.version = Base.nextpatch(project.version)
           Pkg.Types.write_project(project, project_file)
+
+      - name: Stage changes (including new files)
+        if: steps.changes.outputs.changes == 'true'
+        shell: bash
+        run: git add -A
 
       # Create a PR only if files changed (i.e., formatting needed fixes)
       - name: Create Pull Request
