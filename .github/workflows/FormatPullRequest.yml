@@ -13,13 +13,36 @@ on:
         default: "1"
         required: false
         type: string
+      trigger:
+        description: "Comment trigger phrase for on-demand formatting"
+        default: "@format"
+        required: false
+        type: string
 
 jobs:
   format-pull-request:
     name: "Format Pull Request"
     runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request != null &&
+        contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association) &&
+        contains(github.event.comment.body, inputs.trigger)
+      )
     steps:
+      - name: Get PR branch
+        if: github.event_name == 'issue_comment'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          HEAD_REF=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} --jq '.head.ref')
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -44,8 +67,6 @@ jobs:
           itpkgfmt ${{ inputs.directory }}
         continue-on-error: true
 
-      # Detect whether any files changed (tracked files) after formatting.
-      # We'll use this to conditionally bump the version and open a PR.
       - name: Detect formatting changes
         id: changes
         shell: bash
@@ -58,9 +79,27 @@ jobs:
             echo "changes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Only bump the patch version if formatting actually changed files
+      # issue_comment mode: commit directly to the PR branch
+      - name: Commit and push changes
+        if: github.event_name == 'issue_comment' && steps.changes.outputs.changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Format .jl files (ITensorFormatter)"
+          git push
+
+      # issue_comment mode: react to the triggering comment
+      - name: React to comment
+        if: github.event_name == 'issue_comment'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: '+1'
+
+      # schedule/dispatch mode: bump version and open a new PR
       - name: Bump patch version
-        if: steps.changes.outputs.changes == 'true'
+        if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         shell: julia --color=yes {0}
         run: |
           import Pkg
@@ -70,13 +109,12 @@ jobs:
           Pkg.Types.write_project(project, project_file)
 
       - name: Stage changes (including new files)
-        if: steps.changes.outputs.changes == 'true'
+        if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         shell: bash
         run: git add -A
 
-      # Create a PR only if files changed (i.e., formatting needed fixes)
       - name: Create Pull Request
-        if: steps.changes.outputs.changes == 'true'
+        if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
@@ -87,6 +125,7 @@ jobs:
           delete-branch: true
 
       - name: Check outputs
+        if: github.event_name != 'issue_comment'
         run: |
           echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
           echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"
