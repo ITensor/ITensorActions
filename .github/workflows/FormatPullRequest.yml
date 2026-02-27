@@ -15,7 +15,7 @@ on:
         type: string
       trigger:
         description: "Comment trigger phrase for on-demand formatting"
-        default: "@format"
+        default: "/format"
         required: false
         type: string
 
