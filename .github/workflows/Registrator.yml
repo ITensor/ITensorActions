@@ -28,8 +28,7 @@ jobs:
     name: "Register package version"
     runs-on: ubuntu-latest
     if: |
-      github.event_name != 'issue_comment' || (
-        github.event.issue.pull_request != null &&
+      github.event_name != 'commit_comment' || (
         contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association) &&
         contains(github.event.comment.body, inputs.trigger)
       )
@@ -40,13 +39,10 @@ jobs:
       TARGET_SHA: ${{ (github.event.pull_request && github.event.pull_request.merged && github.event.pull_request.merge_commit_sha) || (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}
 
     steps:
-      - name: Get PR head SHA
-        if: github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get target SHA from comment
+        if: github.event_name == 'commit_comment'
         run: |
-          SHA=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} --jq '.head.sha')
-          echo "TARGET_SHA=$SHA" >> $GITHUB_ENV
+          echo "TARGET_SHA=${{ github.event.comment.commit_id }}" >> $GITHUB_ENV
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -328,8 +324,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: React to comment
-        if: github.event_name == 'issue_comment'
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          comment-id: ${{ github.event.comment.id }}
-          reactions: '+1'
+        if: github.event_name == 'commit_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/comments/${{ github.event.comment.id }}/reactions \
+            --method POST -f content='+1'
