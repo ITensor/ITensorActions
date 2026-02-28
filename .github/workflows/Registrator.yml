@@ -129,6 +129,9 @@ jobs:
                   end
               end
 
+              # For issue_comment events, always attempt registration (skip version-change guards).
+              is_force = get(ENV, "GITHUB_EVENT_NAME", "") == "issue_comment"
+
               route = "none"
               is_breaking = false
               skip_reason = ""
@@ -136,19 +139,21 @@ jobs:
               if !isempty(oldv_str)
                   oldv = parse_version(oldv_str, "old")
 
-                  if newv == oldv
+                  if newv == oldv && !is_force
                       route = "none"
                       skip_reason = "Project.toml version unchanged ($newv_str)"
-                  elseif newv < oldv
+                  elseif newv < oldv && !is_force
                       route = "none"
                       skip_reason = "Project.toml version decreased ($oldv_str -> $newv_str); skipping registration"
                   else
-                      ok, why = valid_bump(oldv, newv)
-                      ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
+                      if newv > oldv
+                          ok, why = valid_bump(oldv, newv)
+                          is_force || ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
 
-                      # Breaking if: major bump OR (0.x) minor bump
-                      is_breaking = (newv.major > oldv.major) ||
-                                    (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
+                          # Breaking if: major bump OR (0.x) minor bump
+                          is_breaking = (newv.major > oldv.major) ||
+                                        (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
+                      end
 
                       ENV["JULIA_PKG_SERVER"] = ""
                       Pkg.Registry.add("General")
