@@ -42,11 +42,14 @@ jobs:
     steps:
       - name: Get target SHA from comment
         if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BODY=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
           SHA=$(printf '%s' "$BODY" | grep -oP '${{ inputs.trigger }}\s+\K[0-9a-f]{7,40}' | head -1 || true)
           if [ -n "$SHA" ]; then
-            echo "TARGET_SHA=$SHA" >> $GITHUB_ENV
+            FULL_SHA=$(gh api repos/${{ github.repository }}/commits/$SHA --jq '.sha')
+            echo "TARGET_SHA=$FULL_SHA" >> $GITHUB_ENV
           fi
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
