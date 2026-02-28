@@ -118,7 +118,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TAGBOT_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "Format .jl files (ITensorFormatter)"
           title: "Automatic ITensorFormatter run"
           branch: auto-format-pr
