@@ -170,6 +170,14 @@ jobs:
 
 ### Format Pull Request
 
+The Format Pull Request workflow has two modes depending on the trigger event:
+
+- **Schedule / dispatch mode**: runs the formatter and opens a new pull request with the
+  changes (bumping the patch version).
+- **On-demand mode** (`issue_comment`): comment `/format` (configurable via the `trigger`
+  input) on a pull request to apply formatting directly to that PR branch. The bot reacts
+  with 👍 to confirm.
+
 ```yaml
 name: "Format Pull Request"
 
@@ -177,6 +185,9 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+  # Optional: allow on-demand formatting by commenting "/format" on a PR.
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -188,6 +199,7 @@ jobs:
     uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@main"
     with:
       directory: "." # Customize this to check a specific directory
+      # trigger: "/format" # Customize the on-demand trigger phrase (default: "/format")
 ```
 
 ## LiterateCheck
@@ -334,3 +346,76 @@ jobs:
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
+
+## Registrator
+
+The Registrator workflow registers a new package version whenever the version in
+`Project.toml` is bumped on the main branch. It automatically routes to the
+[General registry](https://github.com/JuliaRegistries/General) for packages
+already registered there, or to a local registry otherwise.
+
+### Automatic registration on push
+
+When a commit is pushed to `main`/`master` that changes `Project.toml`, the workflow
+checks whether the version has increased and, if so, triggers registration. The version
+bump must follow semver (patch, minor, or major increment by exactly 1).
+
+### On-demand registration via comment
+
+Comment `/register` on any issue to force registration of the current `HEAD` of the
+default branch. You can also specify a particular commit SHA to register a non-latest
+commit:
+
+```
+/register
+/register abc1234
+```
+
+The bot reacts with 👍 to confirm the trigger. On-demand registration bypasses the
+version-change check, so it works even if the version was not bumped in the most
+recent commit.
+
+### Example workflow
+
+```yaml
+name: "Register Package"
+
+on:
+  workflow_dispatch: ~
+  push:
+    branches:
+      - "master"
+      - "main"
+    paths:
+      - "Project.toml"
+  # Optional: allow on-demand registration by commenting "/register" on an issue.
+  issue_comment:
+    types:
+      - "created"
+
+permissions:
+  contents: "write"
+  pull-requests: "write"
+  issues: "write"
+
+jobs:
+  Register:
+    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@main"
+    with:
+      localregistry: "ITensor/ITensorRegistry" # omit if package is in General
+    secrets: "inherit"
+```
+
+### Inputs
+
+| Input | Description | Default |
+|---|---|---|
+| `localregistry` | Local registry repo (`owner/name`) for packages not in General | `""` |
+| `trigger` | Comment trigger phrase for on-demand registration | `/register` |
+| `julia-version` | Julia version used by the workflow | `1` |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `REGISTRATOR_KEY` | For local registry only | A PAT with write access to the local registry repo, used to check it out and open a registration PR |
