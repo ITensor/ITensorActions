@@ -40,6 +40,15 @@ jobs:
       TARGET_SHA: ${{ (github.event.pull_request && github.event.pull_request.merged && github.event.pull_request.merge_commit_sha) || (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}
 
     steps:
+      - name: Get target SHA from comment
+        if: github.event_name == 'issue_comment'
+        run: |
+          BODY=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
+          SHA=$(printf '%s' "$BODY" | grep -oP '${{ inputs.trigger }}\s+\K[0-9a-f]{7,40}' | head -1 || true)
+          if [ -n "$SHA" ]; then
+            echo "TARGET_SHA=$SHA" >> $GITHUB_ENV
+          fi
+
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
         with:
