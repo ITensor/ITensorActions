@@ -419,3 +419,32 @@ jobs:
 | Secret | Required | Description |
 |---|---|---|
 | `REGISTRATOR_KEY` | For local registry only | A PAT with write access to the local registry repo, used to check it out and open a registration PR |
+
+## TagBot
+
+The TagBot workflow creates GitHub releases and tags whenever a new version of a package
+is registered in a Julia registry. It supports both the
+[General registry](https://github.com/JuliaRegistries/General) and the
+[ITensorRegistry](https://github.com/ITensor/ITensorRegistry) — the two jobs run in
+parallel so a package registered in either registry is handled automatically.
+
+```yaml
+name: "TagBot"
+on:
+  issue_comment:
+    types:
+      - "created"
+  workflow_dispatch: ~
+jobs:
+  TagBot:
+    if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    secrets: inherit
+```
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `TAGBOT_PAT` | No | Personal access token used to authenticate with GitHub. Falls back to the built-in `GITHUB_TOKEN` if not provided. |
+| `DOCUMENTER_KEY` | No | SSH deploy key used to trigger documentation workflows after a release is created. |
