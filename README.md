@@ -423,10 +423,25 @@ jobs:
 ## TagBot
 
 The TagBot workflow creates GitHub releases and tags whenever a new version of a package
-is registered in a Julia registry. It supports both the
-[General registry](https://github.com/JuliaRegistries/General) and the
-[ITensorRegistry](https://github.com/ITensor/ITensorRegistry) — the two jobs run in
-parallel so a package registered in either registry is handled automatically.
+is registered in a Julia registry. It runs two jobs in parallel — one scanning
+[ITensorRegistry](https://github.com/ITensor/ITensorRegistry) and one scanning the
+[General registry](https://github.com/JuliaRegistries/General) — so a package registered
+in either registry is handled automatically.
+
+### How triggering works
+
+- **General registry**: The General registry has its own
+  [TagBotTriggers workflow](https://github.com/JuliaRegistries/General/blob/master/.github/workflows/TagBotTriggers.yml)
+  that posts a comment as `JuliaTagBot` on a trigger issue in each package repo whenever
+  a new version is merged. This fires the `issue_comment` event that starts TagBot.
+
+- **ITensorRegistry**: The ITensorRegistry has a matching
+  [TagBotTriggers workflow](https://github.com/ITensor/ITensorRegistry/blob/main/.github/workflows/TagBotTriggers.yml)
+  that fires `workflow_dispatch` on the package's `TagBot.yml` directly after each
+  registration PR is merged. This requires a `TAGBOT_TOKEN` secret in ITensorRegistry
+  with `actions: write` permission on the ITensor package repos.
+
+### Example workflow
 
 ```yaml
 name: "TagBot"
