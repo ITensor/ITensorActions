@@ -438,7 +438,7 @@ in either registry is handled automatically.
 - **ITensorRegistry**: The ITensorRegistry has a matching
   [TagBotTriggers workflow](https://github.com/ITensor/ITensorRegistry/blob/main/.github/workflows/TagBotTriggers.yml)
   that fires `workflow_dispatch` on the package's `TagBot.yml` directly after each
-  registration PR is merged. This requires a `TAGBOT_TOKEN` secret in ITensorRegistry
+  registration PR is merged. This requires a `TAGBOT_PAT` secret in ITensorRegistry
   with `actions: write` permission on the ITensor package repos.
 
 ### Example workflow
