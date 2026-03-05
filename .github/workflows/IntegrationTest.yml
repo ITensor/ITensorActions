@@ -9,7 +9,7 @@ on:
         required: false
         type: string
       pkg:
-        description: "Package name without `.jl`, i.e. ITensors (for ITensors.jl)."
+        description: "Package name without `.jl` (e.g. ITensors for ITensors.jl), or a URL (https/git@) for private or unregistered packages."
         required: true
         type: string
       localregistry:
@@ -22,6 +22,10 @@ on:
         default: false
         required: false
         type: boolean
+    secrets:
+      TAGBOT_PAT:
+        description: "GitHub PAT for cloning private repositories via HTTPS."
+        required: false
 
 jobs:
   test:
@@ -48,6 +52,17 @@ jobs:
         if: inputs.pkg != '__none__'
         with:
           localregistry: "${{ inputs.localregistry }}"
+      - name: "Configure git authentication for private repository"
+        if: inputs.pkg != '__none__'
+        env:
+          TOKEN: ${{ secrets.TAGBOT_PAT }}
+        run: |
+          pkg="${{ inputs.pkg }}"
+          if [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; then
+            if [ -n "$TOKEN" ]; then
+              git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+            fi
+          fi
       - name: Run the downstream tests
         if: inputs.pkg != '__none__'
         shell: julia --color=yes --project=downstream {0}
@@ -61,25 +76,34 @@ jobs:
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
-          try
-            pkg = "${{ inputs.pkg }}"
-            Pkg.add(PackageSpec(; name=pkg))
-            # Determine the version that gets installed in order to detect
-            # if the package is forced to downgrade.
-            eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
-            version = pkgversion(eval(Symbol(pkg)))
-            # force it to use this PR's version of the package
-            Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
+          pkg = "${{ inputs.pkg }}"
+          if startswith(pkg, "https://") || startswith(pkg, "git@")
+            # URL: unregistered or private package, skip version-pinning.
+            pkg_name = replace(basename(pkg), r"\.jl$" => "")
+            Pkg.add(PackageSpec(; url=pkg))
+            Pkg.develop(PackageSpec(; path="."))
             Pkg.update()
-            # Try forcing the installation of the package at the latest version
-            # to see if there is a compatibility issue.
-            Pkg.add(PackageSpec(; name=pkg, version=version))
-            Pkg.test(PackageSpec(; name=pkg))  # resolver may fail with test time deps
-          catch err
-            err isa Pkg.Resolve.ResolverError || rethrow()
-            # If we can't resolve that means this is incompatible by SemVer and this is fine
-            # It means we marked this as a breaking change, so we don't need to worry about
-            # Mistakenly introducing a breaking change, as we have intentionally made one
-            @info "Not compatible with this release. No problem." exception=err
-            exit(0)  # Exit immediately, as a success
+            Pkg.test(PackageSpec(; name=pkg_name))
+          else
+            try
+              Pkg.add(PackageSpec(; name=pkg))
+              # Determine the version that gets installed in order to detect
+              # if the package is forced to downgrade.
+              eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
+              version = pkgversion(eval(Symbol(pkg)))
+              # force it to use this PR's version of the package
+              Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
+              Pkg.update()
+              # Try forcing the installation of the package at the latest version
+              # to see if there is a compatibility issue.
+              Pkg.add(PackageSpec(; name=pkg, version=version))
+              Pkg.test(PackageSpec(; name=pkg))  # resolver may fail with test time deps
+            catch err
+              err isa Pkg.Resolve.ResolverError || rethrow()
+              # If we can't resolve that means this is incompatible by SemVer and this is fine
+              # It means we marked this as a breaking change, so we don't need to worry about
+              # Mistakenly introducing a breaking change, as we have intentionally made one
+              @info "Not compatible with this release. No problem." exception=err
+              exit(0)  # Exit immediately, as a success
+            end
           end

@@ -295,6 +295,36 @@ jobs:
       pkg: "${{ matrix.pkg }}"
 ```
 
+### Private or unregistered packages
+
+You can also test private or unregistered packages by passing a URL as the `pkg` value
+instead of a package name. The workflow detects URLs (starting with `https://` or `git@`)
+and installs the package directly from the URL, skipping the version-pinning logic that
+only applies to registered packages.
+
+For private repositories, pass a GitHub token via `secrets: inherit` — the workflow
+expects it as a secret named `token`:
+
+```yaml
+jobs:
+  integration-test:
+    name: "IntegrationTest"
+    strategy:
+      matrix:
+        pkg:
+          - 'BlockSparseArrays'
+          - 'https://github.com/MyOrg/MyPrivatePackage.jl'
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    secrets: inherit
+    with:
+      localregistry: "https://github.com/ITensor/ITensorRegistry.git"
+      pkg: "${{ matrix.pkg }}"
+```
+
+The workflow uses the `TAGBOT_PAT` secret for authentication. If you already have this
+secret configured in your repository or organization (as used by the TagBot workflow),
+no additional setup is needed.
+
 ### Draft PR behavior
 
 By default, integration tests are skipped entirely for draft PRs. This is
