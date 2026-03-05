@@ -321,8 +321,9 @@ jobs:
       pkg: "${{ matrix.pkg }}"
 ```
 
-Add a repository secret named `token` containing a PAT with read access to the private
-repository.
+The workflow uses the `TAGBOT_PAT` secret for authentication. If you already have this
+secret configured in your repository or organization (as used by the TagBot workflow),
+no additional setup is needed.
 
 ### Draft PR behavior
 

@@ -23,8 +23,8 @@ on:
         required: false
         type: boolean
     secrets:
-      token:
-        description: "GitHub token for cloning private repositories via HTTPS."
+      TAGBOT_PAT:
+        description: "GitHub PAT for cloning private repositories via HTTPS."
         required: false
 
 jobs:
@@ -55,7 +55,7 @@ jobs:
       - name: "Configure git authentication for private repository"
         if: inputs.pkg != '__none__'
         env:
-          TOKEN: ${{ secrets.token }}
+          TOKEN: ${{ secrets.TAGBOT_PAT }}
         run: |
           pkg="${{ inputs.pkg }}"
           if [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; then
