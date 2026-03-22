@@ -34,10 +34,7 @@ on:
 
 jobs:
   test:
-    name: >-
-      ${{ (inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')))
-      && format('{0} (fork PR - use /integrationtest to run)', inputs.pkg)
-      || inputs.pkg }}
+    name: ${{ inputs.pkg }}
     if: >-
       (!github.event.pull_request.draft || inputs.run-on-draft) &&
       !(inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')))
