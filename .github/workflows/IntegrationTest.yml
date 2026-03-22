@@ -33,15 +33,6 @@ on:
         required: false
 
 jobs:
-  notify-skip:
-    name: ${{ inputs.pkg }} (skipped)
-    if: ${{ inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')) }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: "Private downstream test skipped (fork PR)"
-        run: |
-          echo "::warning::Private downstream test for ${{ inputs.pkg }} was skipped (PR was made from a fork). A maintainer can run: /integrationtest ${{ inputs.pkg }}"
-
   test:
     name: ${{ inputs.pkg }}
     if: >-
