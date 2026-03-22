@@ -5,7 +5,7 @@ on:
     inputs:
       trigger:
         description: "Required trigger for requesting the test suite"
-        default: "@integrationtests"
+        default: "/integrationtest"
         required: false
         type: string
       localregistry:
@@ -41,6 +41,7 @@ jobs:
     with:
       localregistry: "${{ inputs.localregistry }}"
       pkg: "${{ needs.get-pr-comment.outputs.pkg || ''}}"
+    secrets: inherit
 
   report:
     needs: [get-pr-comment, runtests]
