@@ -50,38 +50,14 @@ jobs:
           is_fork="${{ inputs.is-fork-pr }}"
           if [[ "$is_fork" == "true" ]] && { [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; }; then
             echo "should-skip=true" >> $GITHUB_OUTPUT
-            # Derive a comment tag from the full URL for deduplication
-            tag="integration-skip-$(echo "$pkg" | sed 's|[^a-zA-Z0-9]|-|g')"
-            echo "comment-tag=$tag" >> $GITHUB_OUTPUT
           else
             echo "should-skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: "Find existing skip notification comment"
-        if: steps.skip-check.outputs.should-skip == 'true'
-        id: find-comment
-        uses: peter-evans/find-comment@v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: "<!-- ${{ steps.skip-check.outputs.comment-tag }} -->"
-
-      - name: "Post skip notification comment"
-        if: steps.skip-check.outputs.should-skip == 'true'
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            <!-- ${{ steps.skip-check.outputs.comment-tag }} -->
-            Private downstream test for `${{ inputs.pkg }}` was skipped (PR was made from a fork). A maintainer can run:
-            ```
-            /integrationtest ${{ inputs.pkg }}
-            ```
-          edit-mode: replace
-
       - name: "Private downstream test skipped (fork PR)"
         if: steps.skip-check.outputs.should-skip == 'true'
-        run: echo "Skipped — PR was made from a fork. Use /integrationtest to trigger manually."
+        run: |
+          echo "::warning::Private downstream test for ${{ inputs.pkg }} was skipped (PR was made from a fork). A maintainer can run: /integrationtest ${{ inputs.pkg }}"
 
       - name: "No downstream packages configured"
         if: inputs.pkg == '__none__' && steps.skip-check.outputs.should-skip != 'true'
