@@ -22,6 +22,11 @@ on:
         default: false
         required: false
         type: boolean
+      is-fork-pr:
+        description: "When true, skip URL-based (private/unregistered) packages and post a notification comment instead. Callers should set this to the result of comparing PR head and base repo names."
+        default: false
+        required: false
+        type: boolean
     secrets:
       TAGBOT_PAT:
         description: "GitHub PAT for cloning private repositories via HTTPS."
@@ -38,22 +43,62 @@ jobs:
         os: [ubuntu-latest]
 
     steps:
+      - name: "Check if private downstream test should be skipped"
+        id: skip-check
+        run: |
+          pkg="${{ inputs.pkg }}"
+          is_fork="${{ inputs.is-fork-pr }}"
+          if [[ "$is_fork" == "true" ]] && { [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; }; then
+            echo "should-skip=true" >> $GITHUB_OUTPUT
+            # Derive a comment tag from the full URL for deduplication
+            tag="integration-skip-$(echo "$pkg" | sed 's|[^a-zA-Z0-9]|-|g')"
+            echo "comment-tag=$tag" >> $GITHUB_OUTPUT
+          else
+            echo "should-skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Find existing skip notification comment"
+        if: steps.skip-check.outputs.should-skip == 'true'
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: "<!-- ${{ steps.skip-check.outputs.comment-tag }} -->"
+
+      - name: "Post skip notification comment"
+        if: steps.skip-check.outputs.should-skip == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            <!-- ${{ steps.skip-check.outputs.comment-tag }} -->
+            Private downstream test for `${{ inputs.pkg }}` was skipped (PR was made from a fork). A maintainer can run:
+            ```
+            /integrationtest ${{ inputs.pkg }}
+            ```
+          edit-mode: replace
+
+      - name: "Private downstream test skipped (fork PR)"
+        if: steps.skip-check.outputs.should-skip == 'true'
+        run: echo "Skipped — PR was made from a fork. Use /integrationtest to trigger manually."
+
       - name: "No downstream packages configured"
-        if: inputs.pkg == '__none__'
+        if: inputs.pkg == '__none__' && steps.skip-check.outputs.should-skip != 'true'
         run: echo "No downstream integration tests configured."
       - uses: actions/checkout@v4
-        if: inputs.pkg != '__none__'
+        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
       - uses: julia-actions/setup-julia@v2
-        if: inputs.pkg != '__none__'
+        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - uses: julia-actions/julia-buildpkg@latest
-        if: inputs.pkg != '__none__'
+        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
         with:
           localregistry: "${{ inputs.localregistry }}"
       - name: "Configure git authentication for private repository"
-        if: inputs.pkg != '__none__'
+        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
         env:
           TOKEN: ${{ secrets.TAGBOT_PAT }}
         run: |
@@ -64,7 +109,7 @@ jobs:
             fi
           fi
       - name: Run the downstream tests
-        if: inputs.pkg != '__none__'
+        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
         shell: julia --color=yes --project=downstream {0}
         run: |
           using Pkg
