@@ -23,7 +23,7 @@ on:
         required: false
         type: boolean
       is-fork-pr:
-        description: "When true, skip URL-based (private/unregistered) packages and post a notification comment instead. Callers should set this to the result of comparing PR head and base repo names."
+        description: "When true, skip URL-based (private/unregistered) packages. Callers should set this to the result of comparing PR head and base repo names."
         default: false
         required: false
         type: boolean
@@ -33,9 +33,20 @@ on:
         required: false
 
 jobs:
+  notify-skip:
+    name: ${{ inputs.pkg }} (skipped)
+    if: ${{ inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Private downstream test skipped (fork PR)"
+        run: |
+          echo "::warning::Private downstream test for ${{ inputs.pkg }} was skipped (PR was made from a fork). A maintainer can run: /integrationtest ${{ inputs.pkg }}"
+
   test:
     name: ${{ inputs.pkg }}
-    if: "!github.event.pull_request.draft || inputs.run-on-draft"
+    if: >-
+      (!github.event.pull_request.draft || inputs.run-on-draft) &&
+      !(inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -43,38 +54,22 @@ jobs:
         os: [ubuntu-latest]
 
     steps:
-      - name: "Check if private downstream test should be skipped"
-        id: skip-check
-        run: |
-          pkg="${{ inputs.pkg }}"
-          is_fork="${{ inputs.is-fork-pr }}"
-          if [[ "$is_fork" == "true" ]] && { [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; }; then
-            echo "should-skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "should-skip=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: "Private downstream test skipped (fork PR)"
-        if: steps.skip-check.outputs.should-skip == 'true'
-        run: |
-          echo "::warning::Private downstream test for ${{ inputs.pkg }} was skipped (PR was made from a fork). A maintainer can run: /integrationtest ${{ inputs.pkg }}"
-
       - name: "No downstream packages configured"
-        if: inputs.pkg == '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg == '__none__'
         run: echo "No downstream integration tests configured."
       - uses: actions/checkout@v4
-        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg != '__none__'
       - uses: julia-actions/setup-julia@v2
-        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg != '__none__'
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - uses: julia-actions/julia-buildpkg@latest
-        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg != '__none__'
         with:
           localregistry: "${{ inputs.localregistry }}"
       - name: "Configure git authentication for private repository"
-        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg != '__none__'
         env:
           TOKEN: ${{ secrets.TAGBOT_PAT }}
         run: |
@@ -85,7 +80,7 @@ jobs:
             fi
           fi
       - name: Run the downstream tests
-        if: inputs.pkg != '__none__' && steps.skip-check.outputs.should-skip != 'true'
+        if: inputs.pkg != '__none__'
         shell: julia --color=yes --project=downstream {0}
         run: |
           using Pkg
