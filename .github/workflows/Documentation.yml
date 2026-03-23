@@ -57,7 +57,7 @@ on:
         type: boolean
     secrets:
       CODECOV_TOKEN:
-        required: true
+        required: false
 
 jobs:
   tests:
@@ -112,4 +112,4 @@ jobs:
           files: lcov.info
           flags: "docs"
           token: "${{ secrets.CODECOV_TOKEN }}"
-          fail_ci_if_error: true
+          fail_ci_if_error: false
