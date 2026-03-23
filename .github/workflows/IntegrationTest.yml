@@ -38,9 +38,7 @@ jobs:
       ${{ (inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')))
       && format('{0} (fork PR - use /integrationtest to run)', inputs.pkg)
       || inputs.pkg }}
-    if: >-
-      (!github.event.pull_request.draft || inputs.run-on-draft) &&
-      !(inputs.is-fork-pr && (startsWith(inputs.pkg, 'https://') || startsWith(inputs.pkg, 'git@')))
+    if: "!github.event.pull_request.draft || inputs.run-on-draft"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -48,6 +46,14 @@ jobs:
         os: [ubuntu-latest]
 
     steps:
+      - name: "Check if private downstream test should be skipped"
+        run: |
+          pkg="${{ inputs.pkg }}"
+          is_fork="${{ inputs.is-fork-pr }}"
+          if [[ "$is_fork" == "true" ]] && { [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; }; then
+            echo "::error::Private downstream test for ${{ inputs.pkg }} was skipped (PR was made from a fork). A maintainer can run: /integrationtest ${{ inputs.pkg }}"
+            exit 1
+          fi
       - name: "No downstream packages configured"
         if: inputs.pkg == '__none__'
         run: echo "No downstream integration tests configured."
