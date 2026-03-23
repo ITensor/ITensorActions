@@ -20,7 +20,7 @@ on:
         type: string
     secrets:
       # Only needed for the local-registry path (checkout + PR). Not needed for General.
-      REGISTRATOR_KEY:
+      REGISTRATOR_PAT:
         required: false
 
 jobs:
@@ -244,14 +244,14 @@ jobs:
           echo "inputs.localregistry is required when the package is not in General." >&2
           exit 1
 
-      - name: Validate REGISTRATOR_KEY (local registry)
+      - name: Validate REGISTRATOR_PAT (local registry)
         if: steps.meta.outputs.route == 'local'
         env:
-          REGISTRATOR_KEY: ${{ secrets.REGISTRATOR_KEY }}
+          REGISTRATOR_PAT: ${{ secrets.REGISTRATOR_PAT }}
         shell: bash
         run: |
-          if [ -z "$REGISTRATOR_KEY" ]; then
-            echo "secrets.REGISTRATOR_KEY is required for the local registry path (checkout + PR)." >&2
+          if [ -z "$REGISTRATOR_PAT" ]; then
+            echo "secrets.REGISTRATOR_PAT is required for the local registry path (checkout + PR)." >&2
             exit 1
           fi
 
@@ -261,7 +261,7 @@ jobs:
         with:
           repository: "${{ inputs.localregistry }}"
           path: registry
-          token: "${{ secrets.REGISTRATOR_KEY }}"
+          token: "${{ secrets.REGISTRATOR_PAT }}"
 
       - name: Compose PR metadata (local registry)
         if: steps.meta.outputs.route == 'local'
@@ -317,7 +317,7 @@ jobs:
           branch: "registrator/${{ github.repository }}"
           title: "${{ steps.local_pr.outputs.title }}"
           body: "${{ steps.local_pr.outputs.body }}"
-          token: "${{ secrets.REGISTRATOR_KEY }}"
+          token: "${{ secrets.REGISTRATOR_PAT }}"
           delete-branch: true
 
       - name: Summary (Local registry)

@@ -448,7 +448,7 @@ jobs:
 
 | Secret | Required | Description |
 |---|---|---|
-| `REGISTRATOR_KEY` | For local registry only | A PAT with write access to the local registry repo, used to check it out and open a registration PR |
+| `REGISTRATOR_PAT` | For local registry only | A PAT with write access to the local registry repo, used to check it out and open a registration PR |
 
 ## TagBot
 
