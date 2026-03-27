@@ -5,8 +5,6 @@ on:
     secrets:
       TAGBOT_PAT:
         required: false
-      DOCUMENTER_KEY:
-        required: false
 
 jobs:
   TagBotITensorRegistry:
@@ -16,11 +14,9 @@ jobs:
         with:
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
           registry: "ITensor/ITensorRegistry"
-          ssh: "${{ secrets.DOCUMENTER_KEY }}"
   TagBotGeneral:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "JuliaRegistries/TagBot@v1"
         with:
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
-          ssh: "${{ secrets.DOCUMENTER_KEY }}"
