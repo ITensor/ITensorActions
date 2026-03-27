@@ -251,7 +251,14 @@ jobs:
     uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@main"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
+    secrets: inherit
 ```
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `COMPATHELPER_PAT` | No | A fine-grained PAT with `contents: write` and `pull-requests: write` scoped to the target repos. When provided, PRs created by CompatHelper will trigger CI workflows. Without it, CompatHelper falls back to `GITHUB_TOKEN` and PRs will not trigger CI. |
 
 ## IntegrationTest
 
@@ -492,4 +499,3 @@ jobs:
 | Secret | Required | Description |
 |---|---|---|
 | `TAGBOT_PAT` | No | Personal access token used to authenticate with GitHub. Falls back to the built-in `GITHUB_TOKEN` if not provided. |
-| `DOCUMENTER_KEY` | No | SSH deploy key used to trigger documentation workflows after a release is created. |
