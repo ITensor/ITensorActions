@@ -18,19 +18,31 @@ jobs:
   version-check:
     name: "Check Versions"
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/classify-pr
+        id: classify
+
+      - name: "Skip version check on non-substantive PR"
+        if: steps.classify.outputs.substantive != 'true'
+        run: |
+          echo "PR classified as non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE)."
+          echo "No version bump is required. Reporting success without running the real check."
+
       - uses: julia-actions/setup-julia@v2
+        if: steps.classify.outputs.substantive == 'true'
         with:
           version: ${{ inputs.julia-version }}
-      
+
       - uses: julia-actions/julia-buildpkg@latest
+        if: steps.classify.outputs.substantive == 'true'
         with:
           localregistry: "${{ inputs.localregistry }}"
-      
+
       - name: Check the Project version
+        if: steps.classify.outputs.substantive == 'true'
         shell: julia --color=yes {0}
         run: |
           using Pkg
@@ -47,8 +59,8 @@ jobs:
 
           uuid = Pkg.project().uuid
           pkg_info = find_pkg_info(uuid)
-          
+
           registered_version = maximum(keys(Registry.registry_info(pkg_info).version_info))
           current_version = Pkg.project().version
-          
+
           @assert registered_version < current_version "Current version is not greater than the registered version"
