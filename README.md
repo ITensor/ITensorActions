@@ -229,6 +229,9 @@ jobs:
 | `coverage` | bool | `true` | Collect coverage from doctests and upload to Codecov. |
 | `coverage-directories` | string | `"src,ext"` | Comma-separated list of directories scanned by `julia-actions/julia-processcoverage`. |
 | `continue-on-error` | bool | `false` | Prevent the job from failing if the docs build fails. |
+| `apt-packages` | string | `""` | Space-separated apt packages to install on Ubuntu runners before Julia setup (e.g. `xvfb libgl1`). Ignored on non-Linux runners. |
+| `doc-prefix` | string | `""` | Prefix prepended to each `julia` invocation (both the project-setup step and the docs build step). Example: `xvfb-run -a -s "-screen 0 1024x768x24" ` for packages whose precompile workload requires a display. |
+| `extra-env` | string | `""` | Multi-line `KEY=VALUE` pairs exported into the job's environment (via `$GITHUB_ENV`) before the setup and build steps. |
 
 ### Secrets
 
