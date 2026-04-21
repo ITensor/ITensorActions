@@ -51,6 +51,21 @@ on:
         description: "Prevent the workflow run from failing if/when the job fails"
         required: false
         type: boolean
+      apt-packages:
+        description: "Space-separated list of apt packages to install on Ubuntu runners before Julia setup (e.g. 'xvfb libgl1' for GUI-dependent documentation builds). Ignored on non-Linux runners."
+        default: ""
+        required: false
+        type: string
+      doc-prefix:
+        description: "Value prepended to each julia invocation in the workflow (both the project-setup step and the docs build step). Example: 'xvfb-run -a -s \"-screen 0 1024x768x24\" ' for packages whose precompile workload requires a display."
+        default: ""
+        required: false
+        type: string
+      extra-env:
+        description: "Multi-line KEY=VALUE pairs to export into the job's environment (via $GITHUB_ENV) before the setup and build steps."
+        default: ""
+        required: false
+        type: string
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -62,6 +77,13 @@ jobs:
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     steps:
       - uses: actions/checkout@v4
+
+      - name: "Install apt packages"
+        if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
+
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
         with:
@@ -72,9 +94,16 @@ jobs:
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Setup project
-        shell: julia --project=docs --color=yes {0}
+      - name: "Export extra environment variables"
+        if: "${{ inputs.extra-env != '' }}"
+        shell: "bash"
         run: |
+          echo "${{ inputs.extra-env }}" >> "$GITHUB_ENV"
+
+      - name: Setup project
+        shell: "bash"
+        run: |
+          ${{ inputs.doc-prefix }}julia --project=docs --color=yes <<'EOF'
           import Pkg
           if VERSION >= v"1.8-"
             Pkg.Registry.add()
@@ -90,10 +119,11 @@ jobs:
           end
           Pkg.develop(Pkg.PackageSpec(path=pwd()))
           retry(Pkg.build)(verbose=true)
+          EOF
       - name: "Build and Deploy Documentation"
         env:
           GITHUB_TOKEN: ${{ inputs.github-token || secrets.GITHUB_TOKEN }}
-        run: ${{ inputs.debug-documenter && 'JULIA_DEBUG="Documenter"' || '' }} julia --project=docs/ ${{ inputs.coverage && '--code-coverage=user' }} docs/make.jl
+        run: ${{ inputs.debug-documenter && 'JULIA_DEBUG="Documenter"' || '' }} ${{ inputs.doc-prefix }}julia --project=docs/ ${{ inputs.coverage && '--code-coverage=user' }} docs/make.jl
 
       - uses: julia-actions/julia-processcoverage@v1
         if: "${{ inputs.coverage }}"
