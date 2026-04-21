@@ -101,6 +101,11 @@ on:
         default: ""
         required: false
         type: string
+      check-compat-bounds:
+        description: "After instantiating, fail if any workspace compat entry is resolved to a version below its compat upper bound (indicates a transitive dependency is holding the workspace back from its declared bound)."
+        default: true
+        required: false
+        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -139,6 +144,12 @@ jobs:
         if: "${{ inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
+
+      - name: "Check compat upper bounds"
+        if: "${{ inputs.check-compat-bounds }}"
+        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
+        with:
+          workspace-root: "."
 
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"

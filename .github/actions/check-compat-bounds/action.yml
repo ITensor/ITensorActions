@@ -1,0 +1,18 @@
+name: "Check compat upper bounds"
+description: "Fails if any package with a compat entry in the workspace is resolved to a version below the compat upper bound. Assumes the workspace has already been instantiated (e.g. via julia-actions/julia-buildpkg)."
+inputs:
+  workspace-root:
+    description: "Path to the workspace root (containing Project.toml and Manifest.toml)."
+    required: false
+    default: "."
+runs:
+  using: "composite"
+  steps:
+    - name: "Check compat upper bounds"
+      shell: bash
+      env:
+        WORKSPACE_ROOT: ${{ inputs.workspace-root }}
+        SCRIPT_PATH: ${{ github.action_path }}/check_compat_bounds.jl
+      run: |
+        set -euo pipefail
+        julia --color=yes "$SCRIPT_PATH" "$WORKSPACE_ROOT"
