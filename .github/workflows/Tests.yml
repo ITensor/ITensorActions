@@ -81,6 +81,26 @@ on:
         default: false
         required: false
         type: boolean
+      apt-packages:
+        description: "Space-separated list of apt packages to install on Ubuntu runners before Julia setup (e.g. 'xvfb libgl1' for GUI-dependent tests). Ignored on non-Linux runners."
+        default: ""
+        required: false
+        type: string
+      test-prefix:
+        description: "Value inserted in front of the julia command when running tests (passed through to julia-actions/julia-runtest's `prefix` input). Example: 'xvfb-run -a -s \"-screen 0 1024x768x24\" ' for GUI tests."
+        default: ""
+        required: false
+        type: string
+      extra-env:
+        description: "Multi-line KEY=VALUE pairs to export into the job's environment (via $GITHUB_ENV) before the test step. Example: 'JULIA_REFERENCETESTS_UPDATE=true'."
+        default: ""
+        required: false
+        type: string
+      upload-artifacts-path:
+        description: "Path (file or directory) to upload as an artifact after the test step. Uploads always run (on success or failure) when set. Artifact name is auto-generated per os/julia-version."
+        default: ""
+        required: false
+        type: string
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -98,6 +118,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: "Install apt packages"
+        if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt-packages }}
+
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
         with:
@@ -114,15 +140,29 @@ jobs:
         with:
           localregistry: "${{ inputs.localregistry }}"
 
+      - name: "Export extra environment variables"
+        if: "${{ inputs.extra-env != '' }}"
+        shell: "bash"
+        run: |
+          echo "${{ inputs.extra-env }}" >> "$GITHUB_ENV"
+
       - name: "Run tests ${{ inputs.self-hosted && '' || format('on {0}', inputs.os) }} with Julia v${{ inputs.julia-version }}"
         uses: julia-actions/julia-runtest@v1
         with:
           project: "${{ inputs.project }}"
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
+          prefix: "${{ inputs.test-prefix }}"
         env:
           GROUP: "${{ inputs.group }}"
           JULIA_NUM_THREADS: "${{ inputs.nthreads }}"
+
+      - name: "Upload artifacts"
+        if: "${{ always() && inputs.upload-artifacts-path != '' }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: "artifacts-${{ inputs.os }}-julia-${{ inputs.julia-version }}${{ inputs.group != '' && format('-{0}', inputs.group) || '' }}"
+          path: "${{ inputs.upload-artifacts-path }}"
 
       - uses: julia-actions/julia-processcoverage@v1
         if: "${{ inputs.coverage }}"
