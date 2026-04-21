@@ -5,6 +5,10 @@ inputs:
     description: "Path to the workspace root (containing Project.toml and Manifest.toml)."
     required: false
     default: "."
+  mode:
+    description: "When to run the check. 'always' runs on every invocation. 'never' skips the check. 'auto' runs only when the PR author is a known dependency-update bot (CompatHelper, Dependabot). Matches the semantics of julia-actions/julia-runtest's `force_latest_compatible_version: auto`."
+    required: false
+    default: "always"
 runs:
   using: "composite"
   steps:
@@ -12,7 +16,35 @@ runs:
       shell: bash
       env:
         WORKSPACE_ROOT: ${{ inputs.workspace-root }}
+        MODE: ${{ inputs.mode }}
         SCRIPT_PATH: ${{ github.action_path }}/check_compat_bounds.jl
       run: |
         set -euo pipefail
-        julia --color=yes "$SCRIPT_PATH" "$WORKSPACE_ROOT"
+        case "$MODE" in
+          always)
+            run_check=true
+            ;;
+          never)
+            run_check=false
+            ;;
+          auto)
+            case "${GITHUB_ACTOR:-}" in
+              "github-actions[bot]"|"dependabot[bot]")
+                run_check=true
+                ;;
+              *)
+                run_check=false
+                ;;
+            esac
+            ;;
+          *)
+            echo "Unknown mode: '$MODE' (expected always | never | auto)." >&2
+            exit 2
+            ;;
+        esac
+
+        if [ "$run_check" = "true" ]; then
+          julia --color=yes "$SCRIPT_PATH" "$WORKSPACE_ROOT"
+        else
+          echo "Skipping compat-bounds check (mode=$MODE, actor=${GITHUB_ACTOR:-unset})."
+        fi
