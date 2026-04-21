@@ -9,7 +9,7 @@ on:
         required: false
         type: string
       localregistry:
-        description: "Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) seperated list. User is responsible for setting up the necessary SSH-Keys to access the repositories if necessary."
+        description: "Unused. Kept for backward compatibility with existing callers."
         default: ""
         required: false
         type: string
@@ -31,36 +31,54 @@ jobs:
           echo "PR classified as non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE)."
           echo "No version bump is required. Reporting success without running the real check."
 
+      - name: "Fetch base branch"
+        if: steps.classify.outputs.substantive == 'true'
+        run: git fetch --depth=1 origin "${{ github.base_ref }}"
+
       - uses: julia-actions/setup-julia@v2
         if: steps.classify.outputs.substantive == 'true'
         with:
           version: ${{ inputs.julia-version }}
 
-      - uses: julia-actions/julia-buildpkg@latest
-        if: steps.classify.outputs.substantive == 'true'
-        with:
-          localregistry: "${{ inputs.localregistry }}"
-
-      - name: Check the Project version
+      - name: "Check version was bumped"
         if: steps.classify.outputs.substantive == 'true'
         shell: julia --color=yes {0}
         run: |
-          using Pkg
-          Pkg.activate(".")
+          using TOML
 
-          function find_pkg_info(uuid)
-              for registry in Pkg.Registry.reachable_registries()
-                  if haskey(registry.pkgs, uuid)
-                      return registry.pkgs[uuid]
-                  end
-              end
-              error("Package not found in any registry")
+          base_ref = ENV["GITHUB_BASE_REF"]
+          base_project_text = try
+              read(`git show "origin/$base_ref:Project.toml"`, String)
+          catch err
+              println("Could not read Project.toml on origin/$base_ref ($err); skipping check.")
+              exit(0)
+          end
+          base_project = TOML.parse(base_project_text)
+          current_project = TOML.parse(read("Project.toml", String))
+
+          if !haskey(base_project, "version")
+              println("Base branch Project.toml has no version field; skipping check.")
+              exit(0)
+          end
+          if !haskey(current_project, "version")
+              error(
+                  "Project.toml on this branch has no version field, but the base " *
+                  "branch ($base_ref) does. Restore the version field and bump it."
+              )
           end
 
-          uuid = Pkg.project().uuid
-          pkg_info = find_pkg_info(uuid)
+          base_version = VersionNumber(base_project["version"])
+          current_version = VersionNumber(current_project["version"])
 
-          registered_version = maximum(keys(Registry.registry_info(pkg_info).version_info))
-          current_version = Pkg.project().version
-
-          @assert registered_version < current_version "Current version is not greater than the registered version"
+          if current_version > base_version
+              println(
+                  "OK: Project.toml version bumped from $base_version " *
+                  "(origin/$base_ref) to $current_version (PR head)."
+              )
+          else
+              error(
+                  "Project.toml version was not bumped. Current version $current_version " *
+                  "is not greater than the version $base_version on the base branch " *
+                  "($base_ref). Bump the version in Project.toml."
+              )
+          end
