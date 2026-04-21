@@ -144,6 +144,39 @@ allowed version; exit code `1` means at least one entry is outdated, with a
 per-entry message identifying the package, resolved version, and allowed
 ceiling.
 
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `julia-arch` | string | runner arch | Architecture of Julia to be used. |
+| `project` | string | `"@."` | Value passed to Julia's `--project` flag. |
+| `group` | string | `""` | Test group selector. Exposed to tests via the `GROUP` environment variable so a `runtests.jl` can selectively run a subset. |
+| `self-hosted` | bool | `false` | Run on a self-hosted runner instead of `os`. |
+| `os` | string | `"ubuntu-latest"` | Runner image used when `self-hosted` is `false`. |
+| `nthreads` | number | `1` | Value of `JULIA_NUM_THREADS`. |
+| `cache` | bool | `true` | Use `julia-actions/cache`. |
+| `buildpkg` | bool | `true` | Run `julia-actions/julia-buildpkg` before testing. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving (forwarded to `julia-actions/julia-buildpkg`). |
+| `coverage` | bool | `true` | Collect coverage and upload via Codecov. |
+| `coverage-directories` | string | `"src,ext"` | Comma-separated list of directories scanned by `julia-actions/julia-processcoverage`. |
+| `julia-runtest-depwarn` | string | `"yes"` | Value passed to `julia-runtest`'s `--depwarn` flag. |
+| `continue-on-error` | bool | `false` | Prevent the job from failing when tests fail. Also implicitly true for `julia-version: nightly`. |
+| `timeout-minutes` | number | `60` | Maximum job runtime. |
+| `run-all-on-draft` | bool | `false` | Run the full matrix on draft PRs. When `false`, draft PRs run only the `ubuntu-latest` / Julia `1` combination. |
+| `apt-packages` | string | `""` | Space-separated apt packages to install on Ubuntu runners before Julia setup (e.g. `xvfb libgl1`). Ignored on non-Linux runners. |
+| `test-prefix` | string | `""` | Prefix inserted in front of the `julia` invocation that runs the tests. Example: `xvfb-run -a -s "-screen 0 1024x768x24" ` for GUI-dependent tests. |
+| `extra-env` | string | `""` | Multi-line `KEY=VALUE` pairs exported into the job's environment (via `$GITHUB_ENV`) before the test step. |
+| `upload-artifacts-path` | string | `""` | When set, uploads the given file or directory as a per-matrix-cell artifact after tests run (on success or failure). |
+| `check-compat-bounds` | bool | `true` | Enable or disable the compat upper-bound check (see above). |
+| `check-compat-bounds-mode` | string | `"always"` | Mode of the compat upper-bound check: `"always"`, `"never"`, or `"auto"` (bots only). |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `CODECOV_TOKEN` | Yes | Upload token for Codecov. |
+
 ## Documentation
 
 The documentation workflow is designed to build and deploy the documentation for Julia packages.
@@ -182,6 +215,27 @@ jobs:
     secrets: "inherit"
 ```
 
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `debug-documenter` | bool | `false` | Run Julia with `JULIA_DEBUG=Documenter` for extra debug output. |
+| `github-token` | string | — | GitHub token used for authentication with the SSH deploy key. |
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `self-hosted` | bool | `false` | Run on a self-hosted runner instead of `os`. |
+| `os` | string | `"ubuntu-latest"` | Runner image used when `self-hosted` is `false`. |
+| `cache` | bool | `true` | Use `julia-actions/cache`. |
+| `coverage` | bool | `true` | Collect coverage from doctests and upload to Codecov. |
+| `coverage-directories` | string | `"src,ext"` | Comma-separated list of directories scanned by `julia-actions/julia-processcoverage`. |
+| `continue-on-error` | bool | `false` | Prevent the job from failing if the docs build fails. |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `CODECOV_TOKEN` | No | Upload token for Codecov (only needed if `coverage` is `true` and the repo is private). |
+
 ## Formatting
 
 The formatting workflows allow you to customize which directories are checked, so you can specify only the directories you want. Use the `directory` input to set the directory or directories for formatting (default is the root directory `.`). You can specify multiple directories, e.g. `src test`, and all will be checked by the formatter.
@@ -212,6 +266,15 @@ jobs:
     with:
       directory: "." # Customize this to check a specific directory
 ```
+
+#### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `directory` | string | `"."` | Directory (or space-separated list of directories) to check with `ITensorFormatter`. |
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `concurrent-jobs` | bool | `false` | When `true`, runs use `github.run_id` as the concurrency group (each run gets its own group). When `false`, runs share `github.ref` and older runs are cancelled. |
+| `cancel-in-progress` | bool | `true` | Whether to cancel in-progress runs in the same concurrency group. Only effective when `concurrent-jobs` is `false`. |
 
 ### Format Pull Request
 
@@ -247,6 +310,14 @@ jobs:
       # trigger: "/format" # Customize the on-demand trigger phrase (default: "/format")
 ```
 
+#### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `directory` | string | `"."` | Directory (or space-separated list of directories) that `ITensorFormatter` should format. |
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `trigger` | string | `"/format"` | Comment trigger phrase for on-demand formatting (only used when the workflow is invoked on `issue_comment`). |
+
 ## LiterateCheck
 
 The LiterateCheck workflow is designed to keep the README of Julia packages up to date.
@@ -267,6 +338,20 @@ jobs:
     name: "Literate Check"
     uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@main"
 ```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+
+### Outputs
+
+| Output | Description |
+|---|---|
+| `up_to_date` | `"true"` if `README.md` is up-to-date with its Literate source, `"false"` otherwise. |
+| `literate-diff-patch` | A patch that can be applied to the repo to bring `README.md` in sync with its Literate source. Only set when `up_to_date` is `"false"`. |
 
 ## CompatHelper
 
@@ -298,6 +383,13 @@ jobs:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
     secrets: inherit
 ```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs (besides General) to scan for dependency updates. |
 
 ### Secrets
 
@@ -355,7 +447,7 @@ and installs the package directly from the URL, skipping the version-pinning log
 only applies to registered packages.
 
 For private repositories, pass a GitHub token via `secrets: inherit` — the workflow
-expects it as a secret named `token`:
+expects it as a secret named `INTEGRATIONTEST_PAT`:
 
 ```yaml
 jobs:
@@ -373,9 +465,9 @@ jobs:
       pkg: "${{ matrix.pkg }}"
 ```
 
-The workflow uses the `TAGBOT_PAT` secret for authentication. If you already have this
-secret configured in your repository or organization (as used by the TagBot workflow),
-no additional setup is needed.
+The workflow uses the `INTEGRATIONTEST_PAT` secret for authentication, configured at the
+repository or organization level. When present, it is used to rewrite HTTPS clones of
+GitHub repositories to authenticated URLs so private dependencies can be fetched.
 
 ### Draft PR behavior
 
@@ -391,7 +483,7 @@ tests even on draft PRs, set it to `true`:
 ```
 
 Additionally, it is possible to run these tests dynamically, whenever a comment on a PR is detected.
-For example, a workflow that detects `@integrationtests Repo/Package.jl` looks like:
+For example, a workflow that detects `/integrationtest Repo/Package.jl` (the default trigger) looks like:
 
 ```yaml
 name: "Integration Request"
@@ -409,6 +501,28 @@ jobs:
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `pkg` | string | **required** | Package name (without `.jl`, e.g. `ITensors` for `ITensors.jl`) or a URL (`https://...` or `git@...`) for private or unregistered packages. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `run-on-draft` | bool | `false` | Run integration tests on draft PRs. When `false`, draft PRs skip integration tests entirely. |
+
+The companion `IntegrationTestRequest.yml` workflow (used for the `/integrationtest ...` comment trigger shown above) has its own inputs:
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `trigger` | string | `"/integrationtest"` | Comment trigger phrase. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `INTEGRATIONTEST_PAT` | For private deps | GitHub PAT used to authenticate HTTPS clones of private GitHub repositories. Not needed if every dependency under test is public. |
 
 ## Version Check
 
@@ -428,6 +542,15 @@ jobs:
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to consult when determining the previously registered version. |
+
+The check is automatically skipped on PRs classified as non-substantive (changes limited to `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, or `LICENSE`); those PRs pass without requiring a version bump.
 
 ## Registrator
 
