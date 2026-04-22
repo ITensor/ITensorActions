@@ -1,0 +1,81 @@
+name: "Reusable Check Compat Bounds Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      julia-version:
+        description: "Julia version used to instantiate the workspace and run the check."
+        default: "1"
+        required: false
+        type: string
+      project:
+        description: "The value is passed to Julia's `--project` flag during buildpkg."
+        default: '@.'
+        required: false
+        type: string
+      cache:
+        description: "Use the julia-actions/cache action for caching."
+        default: true
+        required: false
+        type: boolean
+      buildpkg:
+        description: "Use the julia-actions/julia-buildpkg action to instantiate before the check."
+        default: true
+        required: false
+        type: boolean
+      localregistry:
+        description: "Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) separated list."
+        default: ""
+        required: false
+        type: string
+      timeout-minutes:
+        description: "The maximum time in minutes that the job can run."
+        default: 30
+        required: false
+        type: number
+      run-on-draft:
+        description: "When true, run the check even on draft PRs."
+        default: false
+        required: false
+        type: boolean
+      mode:
+        description: "When to run the check: 'always' (every invocation), 'never' (skip), or 'auto' (run only when the PR author is CompatHelper or Dependabot). Matches julia-actions/julia-runtest's 'force_latest_compatible_version: auto' semantics."
+        default: "always"
+        required: false
+        type: string
+      workspace-root:
+        description: "Path to the workspace root (containing Project.toml and Manifest.toml)."
+        default: "."
+        required: false
+        type: string
+
+jobs:
+  check-compat-bounds:
+    name: "Check compat bounds"
+    if: "${{ !github.event.pull_request.draft || inputs.run-on-draft }}"
+    runs-on: "ubuntu-latest"
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Setup Julia ${{ inputs.julia-version }}"
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "${{ inputs.julia-version }}"
+
+      - uses: julia-actions/cache@v2
+        if: "${{ inputs.cache }}"
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - uses: julia-actions/julia-buildpkg@v1
+        if: "${{ inputs.buildpkg }}"
+        with:
+          localregistry: "${{ inputs.localregistry }}"
+          project: "${{ inputs.project }}"
+
+      - name: "Check compat upper bounds"
+        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
+        with:
+          workspace-root: "${{ inputs.workspace-root }}"
+          mode: "${{ inputs.mode }}"

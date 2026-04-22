@@ -99,51 +99,6 @@ the full matrix even on draft PRs, set it to `true`:
       # ...
 ```
 
-### Compat upper-bound check
-
-After `julia-actions/julia-buildpkg` instantiates the package, the Tests
-workflow inspects the resolved `Manifest.toml` and fails if any workspace
-compat entry is resolved to a version below its compat upper bound. This
-flags the situation where a transitive dependency is holding the workspace
-back from a compat upper bound the maintainer believes is being tested —
-for example, a CompatHelper PR that bumps `[compat]` to a newer version
-but the resolver cannot actually pick that version because another
-dependency constrains it.
-
-The check is enabled by default and walks the root `Project.toml` plus
-every path listed in `[workspace].projects`. Standard library packages,
-unregistered `[sources]` dependencies, and `[extras]`-only entries not in
-the manifest are skipped.
-
-| Input | Default | Description |
-|---|---|---|
-| `check-compat-bounds` | `true` | Enable or disable the check entirely. |
-| `check-compat-bounds-mode` | `"always"` | `"always"` runs on every invocation. `"never"` skips the check. `"auto"` runs only when `$GITHUB_ACTOR` is a known dependency-update bot (`github-actions[bot]`, `dependabot[bot]`). |
-
-Example — restrict the check to CompatHelper/Dependabot PRs only:
-
-```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@main"
-    with:
-      check-compat-bounds-mode: auto
-```
-
-#### Using the check outside GitHub Actions
-
-The underlying script is a standalone Julia script; it can be invoked from
-Jenkins or any other CI after the workspace is instantiated:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/ITensor/ITensorActions/main/.github/actions/check-compat-bounds/check_compat_bounds.jl \
-  -o check_compat_bounds.jl
-julia --color=yes check_compat_bounds.jl <workspace-root>
-```
-
-Exit code `0` means every workspace compat entry is resolved to its maximum
-allowed version; exit code `1` means at least one entry is outdated, with a
-per-entry message identifying the package, resolved version, and allowed
-ceiling.
-
 ### Inputs
 
 | Input | Type | Default | Description |
@@ -168,8 +123,6 @@ ceiling.
 | `test-prefix` | string | `""` | Prefix inserted in front of the `julia` invocation that runs the tests. Example: `xvfb-run -a -s "-screen 0 1024x768x24" ` for GUI-dependent tests. |
 | `extra-env` | string | `""` | Multi-line `KEY=VALUE` pairs exported into the job's environment (via `$GITHUB_ENV`) before the test step. |
 | `upload-artifacts-path` | string | `""` | When set, uploads the given file or directory as a per-matrix-cell artifact after tests run (on success or failure). |
-| `check-compat-bounds` | bool | `true` | Enable or disable the compat upper-bound check (see above). |
-| `check-compat-bounds-mode` | string | `"always"` | Mode of the compat upper-bound check: `"always"`, `"never"`, or `"auto"` (bots only). |
 
 ### Secrets
 
@@ -554,6 +507,79 @@ jobs:
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to consult when determining the previously registered version. |
 
 The check is automatically skipped on PRs classified as non-substantive (changes limited to `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, or `LICENSE`); those PRs pass without requiring a version bump.
+
+## Check Compat Bounds
+
+The `CheckCompatBounds` workflow instantiates the package and fails if any
+workspace compat entry is resolved to a version below its compat upper
+bound. This flags the situation where a transitive dependency is holding
+the workspace back from a compat upper bound the maintainer believes is
+being tested — for example, a CompatHelper PR that bumps `[compat]` to a
+newer version but the resolver cannot actually pick that version because
+another dependency constrains it.
+
+The check walks the root `Project.toml` plus every path listed in
+`[workspace].projects`. Standard library packages, unregistered
+`[sources]` dependencies, and `[extras]`-only entries not in the
+manifest are skipped. A compat entry referring to a workspace project's
+own package is checked against the workspace version, not only the
+registry, so a PR bumping the root `version` does not spuriously fail
+because the new version is not yet registered.
+
+The workflow runs once per PR on `ubuntu-latest` and produces its own
+status check, independent of the `Tests` workflow.
+
+```yaml
+name: "Check Compat Bounds"
+
+on:
+  pull_request:
+
+jobs:
+  check-compat-bounds:
+    name: "Check Compat Bounds"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    with:
+      localregistry: https://github.com/ITensor/ITensorRegistry.git
+```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
+| `project` | string | `"@."` | Value passed to Julia's `--project` flag during `julia-actions/julia-buildpkg`. |
+| `cache` | bool | `true` | Use `julia-actions/cache`. |
+| `buildpkg` | bool | `true` | Run `julia-actions/julia-buildpkg` before the check. Disable only if the workspace is instantiated some other way. |
+| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving (forwarded to `julia-actions/julia-buildpkg`). |
+| `timeout-minutes` | number | `30` | Maximum job runtime. |
+| `run-on-draft` | bool | `false` | Run the check on draft PRs. |
+| `mode` | string | `"always"` | `"always"` runs on every invocation. `"never"` skips the check. `"auto"` runs only when `$GITHUB_ACTOR` is a known dependency-update bot (`github-actions[bot]`, `dependabot[bot]`). |
+| `workspace-root` | string | `"."` | Path to the workspace root (containing `Project.toml` and `Manifest.toml`). |
+
+Example — restrict the check to CompatHelper/Dependabot PRs only:
+
+```yaml
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    with:
+      mode: auto
+```
+
+### Using the check outside GitHub Actions
+
+The underlying script is a standalone Julia script; it can be invoked from
+Jenkins or any other CI after the workspace is instantiated:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ITensor/ITensorActions/main/.github/actions/check-compat-bounds/check_compat_bounds.jl \
+  -o check_compat_bounds.jl
+julia --color=yes check_compat_bounds.jl <workspace-root>
+```
+
+Exit code `0` means every workspace compat entry is resolved to its maximum
+allowed version; exit code `1` means at least one entry is outdated, with a
+per-entry message identifying the package, resolved version, and allowed
+ceiling.
 
 ## Registrator
 

@@ -101,16 +101,6 @@ on:
         default: ""
         required: false
         type: string
-      check-compat-bounds:
-        description: "After instantiating, fail if any workspace compat entry is resolved to a version below its compat upper bound (indicates a transitive dependency is holding the workspace back from its declared bound)."
-        default: true
-        required: false
-        type: boolean
-      check-compat-bounds-mode:
-        description: "When to run the compat-bounds check: 'always' (every invocation), 'never' (skip), or 'auto' (run only when the PR author is CompatHelper or Dependabot). Matches julia-actions/julia-runtest's 'force_latest_compatible_version: auto' semantics."
-        default: "always"
-        required: false
-        type: string
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -186,44 +176,3 @@ jobs:
           files: lcov.info
           token: "${{ secrets.CODECOV_TOKEN }}"
           fail_ci_if_error: false
-
-  check-compat-bounds:
-    name: "Check compat bounds"
-    # Runs in parallel with `tests` so a compat-bound failure does not prevent
-    # the test matrix from executing. The caller's gate job (which `needs:` the
-    # reusable-workflow call) still aggregates both jobs, so a failure here
-    # blocks auto-merge.
-    #
-    # The check is platform-independent, so when the caller invokes this
-    # reusable workflow via a matrix (typical), we only run it on the canonical
-    # (ubuntu-latest, julia=1) cell to avoid running it N times.
-    if: >-
-      inputs.check-compat-bounds
-      && inputs.os == 'ubuntu-latest'
-      && inputs.julia-version == '1'
-      && (!github.event.pull_request.draft || inputs.run-all-on-draft)
-    runs-on: "ubuntu-latest"
-    timeout-minutes: ${{ inputs.timeout-minutes }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: "Setup Julia"
-        uses: julia-actions/setup-julia@v2
-        with:
-          version: "1"
-
-      - uses: julia-actions/cache@v2
-        if: "${{ inputs.cache }}"
-        with:
-          token: "${{ secrets.GITHUB_TOKEN }}"
-
-      - uses: julia-actions/julia-buildpkg@v1
-        if: "${{ inputs.buildpkg }}"
-        with:
-          localregistry: "${{ inputs.localregistry }}"
-
-      - name: "Check compat upper bounds"
-        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
-        with:
-          workspace-root: "."
-          mode: "${{ inputs.check-compat-bounds-mode }}"
