@@ -195,34 +195,46 @@ jobs:
     # blocks auto-merge.
     #
     # The check is platform-independent, so when the caller invokes this
-    # reusable workflow via a matrix (typical), we only run it on the canonical
-    # (ubuntu-latest, julia=1) cell to avoid running it N times.
+    # reusable workflow via a matrix (typical) we want the real work to run
+    # only once — on the canonical (ubuntu-latest, julia=1) cell. We gate each
+    # step with that condition rather than the job itself so non-canonical
+    # invocations resolve to a trivially-successful job instead of a skipped
+    # one (skipped jobs render as gray checks).
     if: >-
       inputs.check-compat-bounds
-      && inputs.os == 'ubuntu-latest'
-      && inputs.julia-version == '1'
       && (!github.event.pull_request.draft || inputs.run-all-on-draft)
     runs-on: "ubuntu-latest"
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
+      - name: "Skip (not canonical cell)"
+        if: "${{ inputs.os != 'ubuntu-latest' || inputs.julia-version != '1' }}"
+        run: |
+          echo "Compat-bounds check only runs on (ubuntu-latest, julia=1) per reusable-workflow invocation; this is ($OS, $VER)."
+        env:
+          OS: "${{ inputs.os }}"
+          VER: "${{ inputs.julia-version }}"
+
       - uses: actions/checkout@v4
+        if: "${{ inputs.os == 'ubuntu-latest' && inputs.julia-version == '1' }}"
 
       - name: "Setup Julia"
+        if: "${{ inputs.os == 'ubuntu-latest' && inputs.julia-version == '1' }}"
         uses: julia-actions/setup-julia@v2
         with:
           version: "1"
 
       - uses: julia-actions/cache@v2
-        if: "${{ inputs.cache }}"
+        if: "${{ inputs.os == 'ubuntu-latest' && inputs.julia-version == '1' && inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
 
       - uses: julia-actions/julia-buildpkg@v1
-        if: "${{ inputs.buildpkg }}"
+        if: "${{ inputs.os == 'ubuntu-latest' && inputs.julia-version == '1' && inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
 
       - name: "Check compat upper bounds"
+        if: "${{ inputs.os == 'ubuntu-latest' && inputs.julia-version == '1' }}"
         uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
         with:
           workspace-root: "."
