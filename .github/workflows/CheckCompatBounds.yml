@@ -51,7 +51,7 @@ on:
 
 jobs:
   check-compat-bounds:
-    name: "Check compat bounds"
+    name: "Check Compat Bounds"
     if: "${{ !github.event.pull_request.draft || inputs.run-on-draft }}"
     runs-on: "ubuntu-latest"
     timeout-minutes: ${{ inputs.timeout-minutes }}
