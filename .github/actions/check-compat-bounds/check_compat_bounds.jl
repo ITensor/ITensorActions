@@ -53,6 +53,23 @@ function collect_uuids(projects)
     return uuids
 end
 
+# Versions declared by the workspace itself. A package bumping its own version
+# in a PR won't appear in the registry yet, so we merge these into the set of
+# candidate versions so in-workspace compat entries (e.g. a test/Project.toml
+# pinning the root package) don't spuriously fail the check.
+function workspace_versions(projects)
+    versions = Dict{Base.UUID,VersionNumber}()
+    for path in projects
+        proj = TOML.parsefile(path)
+        uuid_str = get(proj, "uuid", nothing)
+        version_str = get(proj, "version", nothing)
+        uuid_str === nothing && continue
+        version_str === nothing && continue
+        versions[Base.UUID(uuid_str)] = VersionNumber(version_str)
+    end
+    return versions
+end
+
 function collect_compat(projects, uuids)
     entries = NamedTuple[]
     for path in projects
@@ -129,6 +146,7 @@ function main(args)
     uuids = collect_uuids(projects)
     entries = collect_compat(projects, uuids)
     manifest = read_manifest(root)
+    ws_versions = workspace_versions(projects)
 
     issues = NamedTuple[]
     for entry in entries
@@ -145,6 +163,8 @@ function main(args)
         resolved === nothing && continue  # extras-only packages may not be resolved here
 
         versions = registry_versions(entry.uuid)
+        ws_version = get(ws_versions, entry.uuid, nothing)
+        ws_version === nothing || ws_version in versions || push!(versions, ws_version)
         isempty(versions) && continue  # unregistered (e.g. local [sources] deps)
 
         max_allowed = max_satisfying(versions, spec)
