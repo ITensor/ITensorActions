@@ -133,6 +133,23 @@ function max_satisfying(versions, spec::Pkg.Types.VersionSpec)
     return m
 end
 
+# Best-effort explanation for an :outdated entry: in a throwaway copy of
+# the workspace, force-pin the target version and return whatever the
+# resolver prints. The per-entry caller includes this in the report.
+function explain_outdated(workspace_root, dep_name, target::VersionNumber)
+    try
+        mktempdir() do tmp
+            pkg_dir = joinpath(tmp, "pkg")
+            cp(workspace_root, pkg_dir; force = true)
+            cmd = `$(Base.julia_cmd()) --color=no --project=$(pkg_dir)
+                   -e "using Pkg; Pkg.add(Pkg.PackageSpec(name=\"$dep_name\", version=v\"$target\"))"`
+            return read(pipeline(ignorestatus(cmd); stderr = stdout), String)
+        end
+    catch
+        ""
+    end
+end
+
 function main(args)
     root = parse_args(args)
     println("Checking compat upper bounds for workspace at: $root")
@@ -191,6 +208,15 @@ function main(args)
             println("  - $(i.name): compat \"$(i.spec)\" matches no registered version (resolved $(i.resolved))")
         end
         println("      declared in $(relpath(i.source, root))")
+        if i.kind == :outdated
+            explanation = explain_outdated(root, i.name, i.max_allowed)
+            if !isempty(explanation)
+                println("      resolver output when forcing $(i.name) = $(i.max_allowed):")
+                for line in split(explanation, '\n')
+                    println("        ", line)
+                end
+            end
+        end
     end
     println()
     println("This usually means a transitive dependency is pinning one of these packages to an older")
