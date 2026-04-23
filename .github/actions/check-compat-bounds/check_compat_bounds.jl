@@ -133,52 +133,21 @@ function max_satisfying(versions, spec::Pkg.Types.VersionSpec)
     return m
 end
 
-# Best-effort explanation for an :outdated entry: try to add the target
-# version in a throwaway copy of the workspace and capture whatever the
-# resolver complains about. Returns a String (or "" if the attempt
-# unexpectedly succeeds / no useful output).
-function explain_outdated(workspace_root::String, dep_name::String, target::VersionNumber)
-    explanation = try
+# Best-effort explanation for an :outdated entry: in a throwaway copy of
+# the workspace, force-pin the target version and return whatever the
+# resolver prints. The per-entry caller includes this in the report.
+function explain_outdated(workspace_root, dep_name, target::VersionNumber)
+    try
         mktempdir() do tmp
-            # Copy only the TOML files (avoid copying .git, compiled artifacts, etc.).
-            # We don't need the package's src/ to re-resolve.
-            function copy_tomls(src, dst)
-                mkpath(dst)
-                for name in readdir(src; join = false)
-                    startswith(name, ".") && continue
-                    s = joinpath(src, name)
-                    d = joinpath(dst, name)
-                    if isdir(s)
-                        copy_tomls(s, d)
-                    elseif endswith(name, ".toml")
-                        cp(s, d; force = true)
-                    end
-                end
-            end
             pkg_dir = joinpath(tmp, "pkg")
-            copy_tomls(workspace_root, pkg_dir)
-            # Pin `target` on a single version to force re-resolution.
-            # Capture stderr from a subprocess so the caller's environment is untouched.
-            spec_str = string(target)
-            io = IOBuffer()
-            cmd = `$(Base.julia_cmd()) --color=no --startup-file=no --project=$(pkg_dir) -e """
-                using Pkg
-                Pkg.add(Pkg.PackageSpec(name = \"$(dep_name)\", version = v\"$(spec_str)\"))
-            """`
-            proc = run(pipeline(ignorestatus(cmd); stdout = io, stderr = io))
-            output = String(take!(io))
-            if proc.exitcode == 0
-                return ""  # Unexpected success; nothing useful to report
-            end
-            # Trim to the interesting part: the Unsatisfiable-requirements block.
-            m = match(r"(Unsatisfiable requirements detected.*?)(?:\nStacktrace:|\z)"s, output)
-            return m === nothing ? strip(output) : strip(m.captures[1])
+            cp(workspace_root, pkg_dir; force = true)
+            cmd = `$(Base.julia_cmd()) --color=no --project=$(pkg_dir)
+                   -e "using Pkg; Pkg.add(Pkg.PackageSpec(name=\"$dep_name\", version=v\"$target\"))"`
+            return read(pipeline(ignorestatus(cmd); stderr = stdout), String)
         end
-    catch err
-        @warn "explain_outdated failed for $dep_name → $target" exception = (err, catch_backtrace())
+    catch
         ""
     end
-    return explanation
 end
 
 function main(args)
