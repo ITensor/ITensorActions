@@ -153,6 +153,13 @@ jobs:
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
           prefix: "${{ inputs.test-prefix }}"
+          # On LTS, accept that newer dep versions may not be reachable —
+          # let Pkg resolve to whatever satisfies both the workspace compat
+          # and transitive constraints. `auto` (the default) would otherwise
+          # treat bot-authored bump PRs as failing whenever LTS can't reach
+          # the upper-end compat, even when we are fine with the bump being
+          # aspirational on LTS while working on current Julia.
+          force_latest_compatible_version: "${{ inputs.julia-version == 'lts' && 'false' || 'auto' }}"
         env:
           GROUP: "${{ inputs.group }}"
           JULIA_NUM_THREADS: "${{ inputs.nthreads }}"
