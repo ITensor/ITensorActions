@@ -1,12 +1,14 @@
 #!/usr/bin/env julia
 
-# Checks that the root package's `[compat]` entries don't claim support for
-# versions the resolver can't actually reach. Resolves against the root
-# package in isolation — `[weakdeps]`, `[extras]`, and workspace sub-projects
-# (test/, docs/, examples/) are ignored. The primary claim a package makes is
-# about its core deps when installed on its own; if an extension or test-only
-# dep happens to constrain the workspace manifest, that's a secondary concern
-# that shouldn't block the core claim from being honest.
+# Checks that every package with a compat entry across this workspace is
+# resolvable to a version in the same *breaking bucket* (semver major for
+# >= 1.0, minor for 0.x) as the highest allowed by compat. Fails (exit 1) if
+# a compat entry claims support for a breaking-version bucket the resolver
+# can't actually reach — typically because a transitive dependency pins the
+# package into an older bucket. Within-bucket gaps (e.g. compat "0.6"
+# resolved at 0.6.4 while 0.6.5 is available) are ignored, because those
+# gaps don't change what the package claims to support at the API-break
+# level and they resolve themselves on the next upstream release.
 #
 # Usage:
 #   julia check_compat_bounds.jl [workspace-root]
@@ -24,43 +26,92 @@ end
 const STDLIB_UUIDS = Set(keys(Pkg.Types.stdlibs()))
 is_stdlib(uuid::Base.UUID) = uuid in STDLIB_UUIDS
 
-# Build a standalone "core-only" copy of the root Project.toml at `dest`:
-# keep `[deps]` and `[compat]` (filtered to deps entries + `julia`); drop
-# `[weakdeps]`, `[extensions]`, `[extras]`, `[targets]`, and `[workspace]`.
-# Returns the parsed root project dict.
-function write_core_project(root, dest)
+# The "breaking bucket" of a version under Julia's semver-with-caret rules:
+#   v >= 1.0     → (v.major,)
+#   0.1 ≤ v < 1  → (0, v.minor)
+#   0 < v < 0.1  → (0, 0, v.patch)
+# Two versions are breaking-compatible iff their buckets are equal. This
+# mirrors how bare "X.Y.Z" compat entries expand to caret ranges.
+function breaking_bucket(v::VersionNumber)
+    v.major >= 1 && return (Int(v.major),)
+    v.minor >= 1 && return (0, Int(v.minor))
+    return (0, 0, Int(v.patch))
+end
+
+function workspace_projects(root)
     root_toml = joinpath(root, "Project.toml")
     isfile(root_toml) || error("No Project.toml at $root")
     proj = TOML.parsefile(root_toml)
-    deps = get(proj, "deps", Dict{String, Any}())
-    compat = Dict{String, Any}()
-    for (name, spec) in get(proj, "compat", Dict{String, Any}())
-        if name == "julia" || haskey(deps, name)
-            compat[name] = spec
+    tomls = [root_toml]
+    for rel in get(get(proj, "workspace", Dict{String, Any}()), "projects", String[])
+        candidate = joinpath(root, rel, "Project.toml")
+        if isfile(candidate)
+            push!(tomls, candidate)
+        elseif isfile(joinpath(root, rel))
+            push!(tomls, joinpath(root, rel))
+        else
+            @warn "Workspace project path does not exist: $rel"
         end
     end
-    # Intentionally omit name/uuid/version so Pkg treats this as an anonymous
-    # environment, not a full package it should try to precompile.
-    core = Dict{String, Any}(
-        "deps" => deps,
-        "compat" => compat,
-    )
-    mkpath(dest)
-    open(joinpath(dest, "Project.toml"), "w") do io
-        return TOML.print(io, core; sorted = true)
-    end
-    return proj
+    return tomls
 end
 
-function instantiate_core(core_dir)
-    cmd = `$(Base.julia_cmd()) --color=no --startup-file=no --project=$(core_dir)
-           -e "using Pkg; Pkg.instantiate()"`
-    run(cmd)
-    return TOML.parsefile(joinpath(core_dir, "Manifest.toml"))
+function collect_uuids(projects)
+    uuids = Dict{String, Base.UUID}()
+    for path in projects
+        proj = TOML.parsefile(path)
+        for key in ("deps", "weakdeps", "extras")
+            for (name, uuid_str) in get(proj, key, Dict{String, String}())
+                uuids[name] = Base.UUID(uuid_str)
+            end
+        end
+    end
+    return uuids
+end
+
+# Versions declared by the workspace itself. A package bumping its own version
+# in a PR won't appear in the registry yet, so we merge these into the set of
+# candidate versions so in-workspace compat entries (e.g. a test/Project.toml
+# pinning the root package) don't spuriously fail the check.
+function workspace_versions(projects)
+    versions = Dict{Base.UUID, VersionNumber}()
+    for path in projects
+        proj = TOML.parsefile(path)
+        uuid_str = get(proj, "uuid", nothing)
+        version_str = get(proj, "version", nothing)
+        uuid_str === nothing && continue
+        version_str === nothing && continue
+        versions[Base.UUID(uuid_str)] = VersionNumber(version_str)
+    end
+    return versions
+end
+
+function collect_compat(projects, uuids)
+    entries = NamedTuple[]
+    for path in projects
+        proj = TOML.parsefile(path)
+        for (name, spec_str) in get(proj, "compat", Dict{String, String}())
+            name == "julia" && continue
+            uuid = get(uuids, name, nothing)
+            if uuid === nothing
+                @warn "Compat entry for '$name' in $path has no matching UUID in any workspace project's deps/weakdeps/extras; skipping."
+                continue
+            end
+            push!(entries, (; name, spec = spec_str, source = path, uuid))
+        end
+    end
+    return entries
+end
+
+function read_manifest(root)
+    manifest = joinpath(root, "Manifest.toml")
+    isfile(manifest) || error("No Manifest.toml at $root — run Pkg.instantiate() first.")
+    return TOML.parsefile(manifest)
 end
 
 function manifest_version(manifest, uuid::Base.UUID)
     uuid_str = string(uuid)
+    # Julia 1.7+ manifest format nests packages under "deps"; older nests at top.
     pkg_groups = get(manifest, "deps", manifest)
     for (_, entries) in pkg_groups
         entries isa AbstractVector || continue
@@ -98,17 +149,22 @@ function max_satisfying(versions, spec::Pkg.Types.VersionSpec)
     return m
 end
 
-# Best-effort explanation for an :outdated entry: in the already-prepared
-# core-only temp project, force-pin the target version and return whatever
-# the resolver prints (minus the Julia stacktrace).
-function explain_outdated(core_dir, dep_name, target::VersionNumber)
-    try
-        cmd = `$(Base.julia_cmd()) --color=no --startup-file=no --project=$(core_dir)
-               -e "using Pkg; Pkg.add(Pkg.PackageSpec(name=\"$dep_name\", version=v\"$target\"))"`
-        buf = IOBuffer()
-        run(pipeline(ignorestatus(cmd); stdout = buf, stderr = buf))
-        output = String(take!(buf))
-        return strip(split(output, "\nStacktrace:"; limit = 2)[1])
+# Best-effort explanation for an :outdated entry: in a throwaway copy of
+# the workspace, force-pin the target version and return whatever the
+# resolver prints. The per-entry caller includes this in the report.
+function explain_outdated(workspace_root, dep_name, target::VersionNumber)
+    return try
+        mktempdir() do tmp
+            pkg_dir = joinpath(tmp, "pkg")
+            cp(workspace_root, pkg_dir; force = true)
+            cmd = `$(Base.julia_cmd()) --color=no --startup-file=no --project=$(pkg_dir)
+                   -e "using Pkg; Pkg.add(Pkg.PackageSpec(name=\"$dep_name\", version=v\"$target\"))"`
+            buf = IOBuffer()
+            run(pipeline(ignorestatus(cmd); stdout = buf, stderr = buf))
+            output = String(take!(buf))
+            # Drop the Julia stacktrace; keep only the resolver's conflict log.
+            return strip(split(output, "\nStacktrace:"; limit = 2)[1])
+        end
     catch
         ""
     end
@@ -116,74 +172,89 @@ end
 
 function main(args)
     root = parse_args(args)
-    println("Checking compat upper bounds (core only) for: $root")
+    println("Checking compat upper bounds for workspace at: $root")
 
-    return mktempdir() do tmp
-        core_dir = joinpath(tmp, "core")
-        proj = write_core_project(root, core_dir)
-        manifest = instantiate_core(core_dir)
-
-        deps = get(proj, "deps", Dict{String, Any}())
-        compat = get(proj, "compat", Dict{String, Any}())
-
-        issues = NamedTuple[]
-        for (name, spec_str) in compat
-            name == "julia" && continue
-            uuid_str = get(deps, name, nothing)
-            uuid_str === nothing && continue
-            uuid = Base.UUID(uuid_str)
-            is_stdlib(uuid) && continue
-
-            spec = try
-                Pkg.Types.semver_spec(spec_str)
-            catch err
-                @warn "Could not parse compat spec '$spec_str' for $name: $err"
-                continue
-            end
-
-            resolved = manifest_version(manifest, uuid)
-            resolved === nothing && continue
-
-            versions = registry_versions(uuid)
-            isempty(versions) && continue
-
-            max_allowed = max_satisfying(versions, spec)
-            if max_allowed === nothing
-                push!(issues, (; name, spec = spec_str, resolved, max_allowed, kind = :no_match))
-            elseif resolved < max_allowed
-                push!(issues, (; name, spec = spec_str, resolved, max_allowed, kind = :outdated))
-            end
-        end
-
-        if isempty(issues)
-            println()
-            println("All core compat entries are resolved to their highest allowed version.")
-            return 0
-        end
-
-        println()
-        println("Found $(length(issues)) compat entr$(length(issues) == 1 ? "y" : "ies") not matching the latest allowed version:")
-        println()
-        for i in issues
-            if i.kind == :outdated
-                println("  - $(i.name): resolved $(i.resolved), compat \"$(i.spec)\" allows up to $(i.max_allowed)")
-                explanation = explain_outdated(core_dir, i.name, i.max_allowed)
-                if !isempty(explanation)
-                    println("      resolver output when forcing $(i.name) = $(i.max_allowed):")
-                    for line in split(explanation, '\n')
-                        println("        ", line)
-                    end
-                end
-            else
-                println("  - $(i.name): compat \"$(i.spec)\" matches no registered version (resolved $(i.resolved))")
-            end
-        end
-        println()
-        println("Narrow the package's own `[compat]` to match what the resolver reaches,")
-        println("or widen the upstream constraint that is holding it back.")
-
-        return 1
+    projects = workspace_projects(root)
+    println("Workspace projects:")
+    for p in projects
+        println("  - $(relpath(p, root))")
     end
+
+    uuids = collect_uuids(projects)
+    entries = collect_compat(projects, uuids)
+    manifest = read_manifest(root)
+    ws_versions = workspace_versions(projects)
+
+    issues = NamedTuple[]
+    for entry in entries
+        is_stdlib(entry.uuid) && continue
+
+        spec = try
+            Pkg.Types.semver_spec(entry.spec)
+        catch err
+            @warn "Could not parse compat spec '$(entry.spec)' for $(entry.name) in $(entry.source): $err"
+            continue
+        end
+
+        resolved = manifest_version(manifest, entry.uuid)
+        resolved === nothing && continue  # extras-only packages may not be resolved here
+
+        versions = registry_versions(entry.uuid)
+        ws_version = get(ws_versions, entry.uuid, nothing)
+        ws_version === nothing || ws_version in versions || push!(versions, ws_version)
+        isempty(versions) && continue  # unregistered (e.g. local [sources] deps)
+
+        max_allowed = max_satisfying(versions, spec)
+        if max_allowed === nothing
+            push!(issues, (; entry..., resolved, max_allowed, kind = :no_match))
+        elseif resolved < max_allowed &&
+                breaking_bucket(resolved) != breaking_bucket(max_allowed)
+            push!(issues, (; entry..., resolved, max_allowed, kind = :outdated))
+        end
+    end
+
+    if isempty(issues)
+        println()
+        println(
+            "All workspace compat entries resolve to their declared breaking-version bucket."
+        )
+        return 0
+    end
+
+    println()
+    println(
+        "Found $(length(issues)) compat entr$(length(issues) == 1 ? "y" : "ies") claiming breaking-version support the resolver cannot reach:"
+    )
+    println()
+    for i in issues
+        if i.kind == :outdated
+            println(
+                "  - $(i.name): resolved $(i.resolved), compat \"$(i.spec)\" claims up to $(i.max_allowed) (different breaking bucket)"
+            )
+        else
+            println(
+                "  - $(i.name): compat \"$(i.spec)\" matches no registered version (resolved $(i.resolved))"
+            )
+        end
+        println("      declared in $(relpath(i.source, root))")
+        if i.kind == :outdated
+            explanation = explain_outdated(root, i.name, i.max_allowed)
+            if !isempty(explanation)
+                println("      resolver output when forcing $(i.name) = $(i.max_allowed):")
+                for line in split(explanation, '\n')
+                    println("        ", line)
+                end
+            end
+        end
+    end
+    println()
+    println("This means a compat entry claims support for a breaking-version bucket")
+    println("(semver major for >=1.0, minor for 0.x) that the workspace can't resolve to.")
+    println("Either narrow compat to drop the unreachable bucket, or widen/fix the")
+    println("upstream constraint so the newer bucket becomes reachable. Within-bucket")
+    println("gaps (e.g. compat \"0.6\" resolved at 0.6.4 while 0.6.5 exists) are allowed.")
+
+    return 1
 end
 
 exit(main(ARGS))
