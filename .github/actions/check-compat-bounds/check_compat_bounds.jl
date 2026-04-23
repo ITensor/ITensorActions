@@ -133,6 +133,54 @@ function max_satisfying(versions, spec::Pkg.Types.VersionSpec)
     return m
 end
 
+# Best-effort explanation for an :outdated entry: try to add the target
+# version in a throwaway copy of the workspace and capture whatever the
+# resolver complains about. Returns a String (or "" if the attempt
+# unexpectedly succeeds / no useful output).
+function explain_outdated(workspace_root::String, dep_name::String, target::VersionNumber)
+    explanation = try
+        mktempdir() do tmp
+            # Copy only the TOML files (avoid copying .git, compiled artifacts, etc.).
+            # We don't need the package's src/ to re-resolve.
+            function copy_tomls(src, dst)
+                mkpath(dst)
+                for name in readdir(src; join = false)
+                    startswith(name, ".") && continue
+                    s = joinpath(src, name)
+                    d = joinpath(dst, name)
+                    if isdir(s)
+                        copy_tomls(s, d)
+                    elseif endswith(name, ".toml")
+                        cp(s, d; force = true)
+                    end
+                end
+            end
+            pkg_dir = joinpath(tmp, "pkg")
+            copy_tomls(workspace_root, pkg_dir)
+            # Pin `target` on a single version to force re-resolution.
+            # Capture stderr from a subprocess so the caller's environment is untouched.
+            spec_str = string(target)
+            io = IOBuffer()
+            cmd = `$(Base.julia_cmd()) --color=no --startup-file=no --project=$(pkg_dir) -e """
+                using Pkg
+                Pkg.add(Pkg.PackageSpec(name = \"$(dep_name)\", version = v\"$(spec_str)\"))
+            """`
+            proc = run(pipeline(ignorestatus(cmd); stdout = io, stderr = io))
+            output = String(take!(io))
+            if proc.exitcode == 0
+                return ""  # Unexpected success; nothing useful to report
+            end
+            # Trim to the interesting part: the Unsatisfiable-requirements block.
+            m = match(r"(Unsatisfiable requirements detected.*?)(?:\nStacktrace:|\z)"s, output)
+            return m === nothing ? strip(output) : strip(m.captures[1])
+        end
+    catch err
+        @warn "explain_outdated failed for $dep_name → $target" exception = (err, catch_backtrace())
+        ""
+    end
+    return explanation
+end
+
 function main(args)
     root = parse_args(args)
     println("Checking compat upper bounds for workspace at: $root")
@@ -191,6 +239,15 @@ function main(args)
             println("  - $(i.name): compat \"$(i.spec)\" matches no registered version (resolved $(i.resolved))")
         end
         println("      declared in $(relpath(i.source, root))")
+        if i.kind == :outdated
+            explanation = explain_outdated(root, i.name, i.max_allowed)
+            if !isempty(explanation)
+                println("      resolver output when forcing $(i.name) = $(i.max_allowed):")
+                for line in split(explanation, '\n')
+                    println("        ", line)
+                end
+            end
+        end
     end
     println()
     println("This usually means a transitive dependency is pinning one of these packages to an older")
