@@ -25,7 +25,12 @@ on:
         type: boolean
 
 concurrency:
-  group: "${{ inputs.concurrent-jobs && github.run_id || github.ref  }}:${{ github.workflow }}"
+  # Key on the PR number for `pull_request_target` events; `github.ref` would
+  # resolve to the target branch (`refs/heads/main`) and would put every PR's
+  # format check into the same group, causing each new PR to cancel all other
+  # in-progress format checks across the repo. Fall back to `github.ref` for
+  # non-PR triggers.
+  group: "${{ inputs.concurrent-jobs && github.run_id || github.event.pull_request.number || github.ref }}:${{ github.workflow }}"
   cancel-in-progress: ${{ !inputs.concurrent-jobs && inputs.cancel-in-progress }}
 
 jobs:
