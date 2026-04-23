@@ -79,15 +79,15 @@ jobs:
             end
           end
           pkg = "${{ inputs.pkg }}"
-          if startswith(pkg, "https://") || startswith(pkg, "git@")
-            # URL: unregistered or private package, skip version-pinning.
-            pkg_name = replace(basename(pkg), r"\.jl$" => "")
-            Pkg.add(PackageSpec(; url=pkg))
-            Pkg.develop(PackageSpec(; path="."))
-            Pkg.update()
-            Pkg.test(PackageSpec(; name=pkg_name))
-          else
-            try
+          try
+            if startswith(pkg, "https://") || startswith(pkg, "git@")
+              # URL: unregistered or private package, skip version-pinning.
+              pkg_name = replace(basename(pkg), r"\.jl$" => "")
+              Pkg.add(PackageSpec(; url=pkg))  # resolver may fail with main deps
+              Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
+              Pkg.update()
+              Pkg.test(PackageSpec(; name=pkg_name))  # resolver may fail with test time deps
+            else
               Pkg.add(PackageSpec(; name=pkg))
               # Determine the version that gets installed in order to detect
               # if the package is forced to downgrade.
@@ -100,12 +100,12 @@ jobs:
               # to see if there is a compatibility issue.
               Pkg.add(PackageSpec(; name=pkg, version=version))
               Pkg.test(PackageSpec(; name=pkg))  # resolver may fail with test time deps
-            catch err
-              err isa Pkg.Resolve.ResolverError || rethrow()
-              # If we can't resolve that means this is incompatible by SemVer and this is fine
-              # It means we marked this as a breaking change, so we don't need to worry about
-              # Mistakenly introducing a breaking change, as we have intentionally made one
-              @info "Not compatible with this release. No problem." exception=err
-              exit(0)  # Exit immediately, as a success
             end
+          catch err
+            err isa Pkg.Resolve.ResolverError || rethrow()
+            # If we can't resolve that means this is incompatible by SemVer and this is fine
+            # It means we marked this as a breaking change, so we don't need to worry about
+            # Mistakenly introducing a breaking change, as we have intentionally made one
+            @info "Not compatible with this release. No problem." exception=err
+            exit(0)  # Exit immediately, as a success
           end
