@@ -50,9 +50,15 @@ jobs:
         # that filter silently drops its own PRs and every scheduled run opens
         # a fresh duplicate. Detect the actual token owner and pass it through
         # as the ci_cfg username so dedup works.
+        #
+        # `gh api user` requires a user-scoped token; the built-in GITHUB_TOKEN
+        # is an installation token and will return 403. In that case we fall
+        # through to an empty value, and the Run step below leaves
+        # GitHubActions() at its `github-actions[bot]` default.
         id: token-owner
         run: |
-          echo "login=$(gh api user --jq .login)" >> "$GITHUB_OUTPUT"
+          login=$(gh api user --jq .login 2>/dev/null || echo "")
+          echo "login=$login" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.COMPATHELPER_PAT || secrets.GITHUB_TOKEN }}
       - name: "Run CompatHelper"
@@ -88,9 +94,10 @@ jobs:
             end
           end
           subdirs = ["", "docs", "examples", "test"]
-          ci_cfg = CompatHelper.GitHubActions(;
-            username="${{ steps.token-owner.outputs.login }}",
-          )
+          token_owner = "${{ steps.token-owner.outputs.login }}"
+          ci_cfg = isempty(token_owner) ?
+              CompatHelper.GitHubActions() :
+              CompatHelper.GitHubActions(; username=token_owner)
           CompatHelper.main(ENV, ci_cfg; registries, subdirs, bump_version=true)
         shell: julia --color=yes {0}
         env:
