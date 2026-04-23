@@ -143,7 +143,11 @@ function explain_outdated(workspace_root, dep_name, target::VersionNumber)
             cp(workspace_root, pkg_dir; force = true)
             cmd = `$(Base.julia_cmd()) --color=no --project=$(pkg_dir)
                    -e "using Pkg; Pkg.add(Pkg.PackageSpec(name=\"$dep_name\", version=v\"$target\"))"`
-            return read(pipeline(ignorestatus(cmd); stderr = stdout), String)
+            buf = IOBuffer()
+            run(pipeline(ignorestatus(cmd); stdout = buf, stderr = buf))
+            output = String(take!(buf))
+            # Drop the Julia stacktrace; keep only the resolver's conflict log.
+            return strip(split(output, "\nStacktrace:"; limit = 2)[1])
         end
     catch
         ""
