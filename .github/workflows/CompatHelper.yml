@@ -43,6 +43,18 @@ jobs:
           version = "3"
           Pkg.add(; name, uuid, version)
         shell: julia --color=yes {0}
+      - name: "Detect token owner"
+        # CompatHelper dedups open PRs by filtering on a fixed username
+        # ("github-actions[bot]" by default). When COMPATHELPER_PAT is used so
+        # pushes trigger CI, PRs are attributed to the PAT owner instead, so
+        # that filter silently drops its own PRs and every scheduled run opens
+        # a fresh duplicate. Detect the actual token owner and pass it through
+        # as the ci_cfg username so dedup works.
+        id: token-owner
+        run: |
+          echo "login=$(gh api user --jq .login)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.COMPATHELPER_PAT || secrets.GITHUB_TOKEN }}
       - name: "Run CompatHelper"
         run: |
           import CompatHelper
@@ -76,7 +88,10 @@ jobs:
             end
           end
           subdirs = ["", "docs", "examples", "test"]
-          CompatHelper.main(; registries, subdirs, bump_version=true)
+          ci_cfg = CompatHelper.GitHubActions(;
+            username="${{ steps.token-owner.outputs.login }}",
+          )
+          CompatHelper.main(ENV, ci_cfg; registries, subdirs, bump_version=true)
         shell: julia --color=yes {0}
         env:
           # Use COMPATHELPER_PAT if available so that pushes trigger CI workflows.
