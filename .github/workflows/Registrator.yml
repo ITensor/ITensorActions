@@ -263,6 +263,30 @@ jobs:
           path: registry
           token: "${{ secrets.REGISTRATOR_PAT }}"
 
+      # Resolve the PAT owner so the registry-PR commit author and committer
+      # both match the authenticating identity. Without this, peter-evans
+      # below defaults the author to the workflow-trigger commit author and
+      # the committer to github-actions[bot].
+      - name: Detect token owner
+        if: steps.meta.outputs.route == 'local'
+        id: token-owner
+        env:
+          GH_TOKEN: ${{ secrets.REGISTRATOR_PAT }}
+        shell: bash
+        run: |
+          json=$(gh api user 2>/dev/null || echo '{}')
+          login=$(echo "$json" | jq -r '.login // ""')
+          id=$(echo "$json" | jq -r '.id // ""')
+          if [ -n "$login" ]; then
+            name="$login"
+            email="${id}+${login}@users.noreply.github.com"
+          else
+            name="github-actions[bot]"
+            email="github-actions[bot]@users.noreply.github.com"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "email=$email" >> "$GITHUB_OUTPUT"
+
       - name: Compose PR metadata (local registry)
         if: steps.meta.outputs.route == 'local'
         id: local_pr
@@ -319,6 +343,8 @@ jobs:
           body: "${{ steps.local_pr.outputs.body }}"
           token: "${{ secrets.REGISTRATOR_PAT }}"
           delete-branch: true
+          author: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
+          committer: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
 
       - name: Summary (Local registry)
         if: steps.meta.outputs.route == 'local'

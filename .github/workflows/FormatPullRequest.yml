@@ -79,12 +79,12 @@ jobs:
             echo "changes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Resolve the PAT owner so commit author and reaction attribution match
-      # the identity the token is actually authenticating as. Falls back to
-      # github-actions[bot] if FORMATPULLREQUEST_PAT is unset (e.g. forks).
+      # Resolve the PAT owner so commit author, PR committer, and reaction
+      # attribution all match the identity the token authenticates as.
+      # Falls back to github-actions[bot] when FORMATPULLREQUEST_PAT is
+      # unset (forks, etc.).
       - name: Detect token owner
         id: token-owner
-        if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
         shell: bash
@@ -92,23 +92,25 @@ jobs:
           json=$(gh api user 2>/dev/null || echo '{}')
           login=$(echo "$json" | jq -r '.login // ""')
           id=$(echo "$json" | jq -r '.id // ""')
-          echo "login=$login" >> "$GITHUB_OUTPUT"
-          echo "id=$id" >> "$GITHUB_OUTPUT"
+          if [ -n "$login" ]; then
+            name="$login"
+            email="${id}+${login}@users.noreply.github.com"
+          else
+            name="github-actions[bot]"
+            email="github-actions[bot]@users.noreply.github.com"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "email=$email" >> "$GITHUB_OUTPUT"
 
       # issue_comment mode: commit directly to the PR branch
       - name: Commit and push changes
         if: github.event_name == 'issue_comment' && steps.changes.outputs.changes == 'true'
         env:
-          TOKEN_LOGIN: ${{ steps.token-owner.outputs.login }}
-          TOKEN_ID: ${{ steps.token-owner.outputs.id }}
+          GIT_NAME: ${{ steps.token-owner.outputs.name }}
+          GIT_EMAIL: ${{ steps.token-owner.outputs.email }}
         run: |
-          if [ -n "$TOKEN_LOGIN" ]; then
-            git config user.name "$TOKEN_LOGIN"
-            git config user.email "${TOKEN_ID}+${TOKEN_LOGIN}@users.noreply.github.com"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-          fi
+          git config user.name "$GIT_NAME"
+          git config user.email "$GIT_EMAIL"
           git add -A
           git commit -m "Format .jl files (ITensorFormatter)"
           git push
@@ -148,6 +150,8 @@ jobs:
           title: "Automatic ITensorFormatter run"
           branch: auto-format-pr
           delete-branch: true
+          author: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
+          committer: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
 
       - name: Check outputs
         if: github.event_name != 'issue_comment'
