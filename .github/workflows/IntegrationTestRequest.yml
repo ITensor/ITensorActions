@@ -49,5 +49,6 @@ jobs:
     steps:
       - uses: peter-evans/create-or-update-comment@v4
         with:
+          token: ${{ secrets.INTEGRATIONTEST_PAT || github.token }}
           comment-id: ${{ github.event.comment.id }}
           reactions: '+1'
