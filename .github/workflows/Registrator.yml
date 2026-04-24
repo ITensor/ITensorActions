@@ -218,7 +218,7 @@ jobs:
         id: cc
         uses: peter-evans/commit-comment@v4
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.REGISTRATOR_PAT || github.token }}
           sha: ${{ env.TARGET_SHA }}
           body-path: registrator-comment.md
 
@@ -365,7 +365,7 @@ jobs:
       - name: React to comment
         if: github.event_name == 'issue_comment'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.REGISTRATOR_PAT || secrets.GITHUB_TOKEN }}
         run: |
           gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
             --method POST -f content='+1'
