@@ -101,14 +101,15 @@ jobs:
         uses: peter-evans/find-comment@v3
         id: find-comment
         with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
           issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
           body-includes: '<!-- format-check-summary -->'
 
       - name: Comment formatting suggestions
         if: steps.format.outputs.exit_code == 1
         uses: peter-evans/create-or-update-comment@v4
         with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
@@ -131,6 +132,7 @@ jobs:
         if: steps.format.outputs.exit_code == 0 && steps.find-comment.outputs.comment-id
         uses: peter-evans/create-or-update-comment@v4
         with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
