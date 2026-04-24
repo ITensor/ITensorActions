@@ -79,12 +79,36 @@ jobs:
             echo "changes=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Resolve the PAT owner so commit author and reaction attribution match
+      # the identity the token is actually authenticating as. Falls back to
+      # github-actions[bot] if FORMATPULLREQUEST_PAT is unset (e.g. forks).
+      - name: Detect token owner
+        id: token-owner
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          json=$(gh api user 2>/dev/null || echo '{}')
+          login=$(echo "$json" | jq -r '.login // ""')
+          id=$(echo "$json" | jq -r '.id // ""')
+          echo "login=$login" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
       # issue_comment mode: commit directly to the PR branch
       - name: Commit and push changes
         if: github.event_name == 'issue_comment' && steps.changes.outputs.changes == 'true'
+        env:
+          TOKEN_LOGIN: ${{ steps.token-owner.outputs.login }}
+          TOKEN_ID: ${{ steps.token-owner.outputs.id }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$TOKEN_LOGIN" ]; then
+            git config user.name "$TOKEN_LOGIN"
+            git config user.email "${TOKEN_ID}+${TOKEN_LOGIN}@users.noreply.github.com"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+          fi
           git add -A
           git commit -m "Format .jl files (ITensorFormatter)"
           git push
@@ -94,6 +118,7 @@ jobs:
         if: github.event_name == 'issue_comment'
         uses: peter-evans/create-or-update-comment@v4
         with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
           comment-id: ${{ github.event.comment.id }}
           reactions: '+1'
 
