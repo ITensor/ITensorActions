@@ -712,7 +712,9 @@ It has no runtime effect and does not propagate into the reusable workflow. A YA
 comment would be simpler, but [ITensorFormatter](https://github.com/ITensor/ITensorFormatter.jl)
 (`itpkgfmt`) strips comments when reformatting YAML — a consequence of writing through
 [YAML.jl](https://github.com/JuliaData/YAML.jl), whose writer does not preserve
-comments. So the marker has to live in a structural element instead of a `#` line.
+comments (tracked upstream at
+[YAML.jl#245](https://github.com/JuliaData/YAML.jl/issues/245)). So the marker has to
+live in a structural element instead of a `#` line.
 
 ### Secrets
 
