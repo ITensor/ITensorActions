@@ -684,12 +684,37 @@ on:
     types:
       - "created"
   workflow_dispatch: ~
+env:
+  REGISTRY_TAGBOT_ACTION: "JuliaRegistries/TagBot"
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
     uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
     secrets: inherit
 ```
+
+#### Why the `env:` marker
+
+The General registry's
+[TagBotTriggers workflow](https://github.com/JuliaRegistries/General/blob/master/.github/workflows/TagBotTriggers.yml)
+runs `RegistryCI.TagBot.maybe_notify`, which only treats TagBot as enabled on a package
+repo if the literal substring `JuliaRegistries/TagBot` appears in some file under
+`.github/workflows/`
+([source](https://github.com/JuliaRegistries/RegistryCI.jl/blob/master/AutoMerge/src/TagBot/TagBot.jl#L62-L77)).
+After delegating to this reusable workflow, the caller no longer contains that string —
+the actual `JuliaRegistries/TagBot` invocation lives inside the reusable workflow, which
+the substring check does not follow `uses:` references to find. Without the marker the
+General registry never posts a `JuliaTagBot` trigger comment and tagging silently
+stops working for any package registered only in General.
+
+The unused `env:` variable above contains the literal substring so the check passes.
+It has no runtime effect and does not propagate into the reusable workflow. A YAML
+comment would be simpler, but [ITensorFormatter](https://github.com/ITensor/ITensorFormatter.jl)
+(`itpkgfmt`) strips comments when reformatting YAML — a consequence of writing through
+[YAML.jl](https://github.com/JuliaData/YAML.jl), whose writer does not preserve
+comments (tracked upstream at
+[YAML.jl#245](https://github.com/JuliaData/YAML.jl/issues/245)). So the marker has to
+live in a structural element instead of a `#` line.
 
 ### Secrets
 
