@@ -657,10 +657,12 @@ jobs:
 ## TagBot
 
 The TagBot workflow creates GitHub releases and tags whenever a new version of a package
-is registered in a Julia registry. It runs two jobs in parallel — one scanning
+is registered in a Julia registry. It runs separate jobs in parallel — one scanning
 [ITensorRegistry](https://github.com/ITensor/ITensorRegistry) and one scanning the
 [General registry](https://github.com/JuliaRegistries/General) — so a package registered
-in either registry is handled automatically.
+in either registry is handled automatically. For repositories that contain additional
+Julia packages in subdirectories (for example a monorepo layout), an opt-in `subdirs`
+input adds matrix jobs that tag those subdir packages from the General registry.
 
 ### How triggering works
 
@@ -715,6 +717,44 @@ comment would be simpler, but [ITensorFormatter](https://github.com/ITensor/ITen
 comments (tracked upstream at
 [YAML.jl#245](https://github.com/JuliaData/YAML.jl/issues/245)). So the marker has to
 live in a structural element instead of a `#` line.
+
+### Tagging packages in subdirectories
+
+Some repositories ship more than one Julia package — for example, a top-level
+package plus one or more sub-packages under their own subdirectories. Each
+sub-package is registered separately in the General registry and gets its own
+tag namespace (`SubPkgName-vX.Y.Z`).
+
+The reusable workflow handles these via the optional `subdirs` input, which
+takes a JSON-encoded array of subdirectory package names and runs an additional
+matrix job per entry, passing each name to TagBot's `subdir` parameter:
+
+```yaml
+name: "TagBot"
+on:
+  issue_comment:
+    types:
+      - "created"
+  workflow_dispatch: ~
+env:
+  REGISTRY_TAGBOT_ACTION: "JuliaRegistries/TagBot"
+jobs:
+  TagBot:
+    if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    with:
+      subdirs: '["NDTensors"]'
+    secrets: inherit
+```
+
+When `subdirs` is left at its default of `'[]'`, the matrix job is skipped and
+the workflow behaves exactly as before — only top-level packages are tagged.
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `subdirs` | string | `"[]"` | JSON-encoded array of subdirectory package names to tag from the General registry, e.g. `'["NDTensors"]'`. Each entry is passed as the `subdir` parameter to a matrix job invoking `JuliaRegistries/TagBot`. Leave at the default to skip subdir tagging. |
 
 ### Secrets
 
