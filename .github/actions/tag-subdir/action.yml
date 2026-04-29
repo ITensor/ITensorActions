@@ -1,0 +1,32 @@
+name: "Tag a subdir package at the registered commit"
+description: "Creates missing tags and GitHub releases for a subdir package using the commit recorded in each version's General-registry PR. Replaces JuliaRegistries/TagBot's subdir handling, which uses a tree-hash fast-path that picks a later same-subtree commit instead of the registered one."
+inputs:
+  subdir:
+    description: "Subdir of the package within this repo, e.g. NDTensors."
+    required: true
+  package-name:
+    description: "Registered package name. Defaults to the subdir, which is the convention in this ecosystem."
+    required: false
+    default: ""
+  dry-run:
+    description: "If true, log decisions without creating tags or releases."
+    required: false
+    default: "false"
+  token:
+    description: "GitHub token used for API calls. Needs contents: write to create tags and releases."
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: "composite"
+  steps:
+    - name: "Tag ${{ inputs.subdir }}"
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TAG_SUBDIR: ${{ inputs.subdir }}
+        TAG_PACKAGE_NAME: ${{ inputs.package-name }}
+        TAG_REPO: ${{ github.repository }}
+        TAG_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        python3 "${{ github.action_path }}/tag_subdir.py"

@@ -29,12 +29,14 @@ jobs:
   TagBotGeneralSubdirs:
     if: "${{ inputs.subdirs != '[]' }}"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
     strategy:
       fail-fast: false
       matrix:
         subdir: "${{ fromJSON(inputs.subdirs) }}"
     steps:
-      - uses: "JuliaRegistries/TagBot@v1"
+      - uses: "ITensor/ITensorActions/.github/actions/tag-subdir@main"
         with:
-          token: "${{ secrets.TAGBOT_PAT || github.token }}"
           subdir: "${{ matrix.subdir }}"
+          token: "${{ secrets.TAGBOT_PAT || github.token }}"
