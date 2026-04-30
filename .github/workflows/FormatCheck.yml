@@ -1,5 +1,17 @@
 name: "Reusable Format Checking Workflow"
 
+# Parse phase of the format-check pipeline. Designed to run on
+# `pull_request:` (no secrets, read-only `GITHUB_TOKEN` for fork PRs)
+# so that PR-controlled content the formatter touches can never reach
+# secrets. The check status this workflow emits is what branch
+# protection should require.
+#
+# Companion: FormatCheckPostback.yml runs on `workflow_run:` after this
+# workflow finishes, downloads the artifact uploaded here, and posts /
+# updates the format-suggestion comment. The postback runs in the base
+# repo's trusted context so it can use `FORMATPULLREQUEST_PAT` without
+# exposing it to the parse phase.
+
 on:
   workflow_call:
     inputs:
@@ -25,11 +37,8 @@ on:
         type: boolean
 
 concurrency:
-  # Key on the PR number for `pull_request_target` events; `github.ref` would
-  # resolve to the target branch (`refs/heads/main`) and would put every PR's
-  # format check into the same group, causing each new PR to cancel all other
-  # in-progress format checks across the repo. Fall back to `github.ref` for
-  # non-PR triggers.
+  # Key on the PR number so each PR has its own concurrency group;
+  # falling back to `github.ref` for non-PR triggers.
   group: "${{ inputs.concurrent-jobs && github.run_id || github.event.pull_request.number || github.ref }}:${{ github.workflow }}"
   cancel-in-progress: ${{ !inputs.concurrent-jobs && inputs.cancel-in-progress }}
 
@@ -37,25 +46,21 @@ jobs:
   format-check:
     name: "Check Formatting"
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
-      actions: write
-      pull-requests: write
 
     steps:
-      - name: Check out repository
+      - name: Check out PR head
         uses: actions/checkout@v5
         with:
-          ref: ${{github.event.pull_request.head.ref}}
-          repository: ${{github.event.pull_request.head.repo.full_name}}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '${{ inputs.julia-version }}'
-          arch: 'x64'
+          version: "${{ inputs.julia-version }}"
+          arch: "x64"
 
       - uses: julia-actions/cache@v2
 
@@ -71,76 +76,54 @@ jobs:
 
       - name: Run ITensorFormatter
         id: format
+        env:
+          DIRECTORY: ${{ inputs.directory }}
         run: |
           set +e
-          echo "Formatter will run on: ${{ inputs.directory }}"
-          itpkgfmt ${{ inputs.directory }}
+          echo "Formatter will run on: $DIRECTORY"
+          itpkgfmt "$DIRECTORY"
           FORMAT_EXIT=$?
           if [ $FORMAT_EXIT -ne 0 ]; then
-            echo "exit_code=2" >> $GITHUB_OUTPUT
-            echo "diff=" >> $GITHUB_OUTPUT
-            exit 1
+            : > diff.patch
+            echo "exit_code=2" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-
-          # Report all changes introduced by the formatter (including newly created files).
-          # `git add -N .` makes newly created (untracked) files appear in `git diff` as additions.
+          # `git add -N .` makes new (untracked) files visible to `git diff`
+          # so the diff captured below covers added files as well.
           git add -N .
-          DIFF=$(git diff)
-          if [ -n "$DIFF" ]; then
-            EXIT_CODE=1
+          git diff > diff.patch
+          if [ -s diff.patch ]; then
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
           else
-            EXIT_CODE=0
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          echo "$DIFF" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Save metadata for postback
+        if: ${{ always() }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXIT_CODE: ${{ steps.format.outputs.exit_code }}
+        run: |
+          {
+            echo "pr_number=$PR_NUMBER"
+            echo "pr_head_sha=$PR_HEAD_SHA"
+            echo "exit_code=${EXIT_CODE:-2}"
+          } > metadata.txt
 
-      - name: Find comment
-        uses: peter-evans/find-comment@v3
-        id: find-comment
+      - name: Upload artifact for postback
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '<!-- format-check-summary -->'
-
-      - name: Comment formatting suggestions
-        if: steps.format.outputs.exit_code == 1
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            <!-- format-check-summary -->
-
-            Your PR requires formatting changes to meet the project's style guidelines.
-            Please run the [ITensorFormatter](https://github.com/ITensor/ITensorFormatter.jl) to apply these changes.
-
-            <details>
-            <summary>Click here to view the suggested changes.</summary>
-
-            ~~~diff
-            ${{ steps.format.outputs.diff }}
-            ~~~
-
-            </details>
-          edit-mode: replace
-
-      - name: Update stale comment
-        if: steps.format.outputs.exit_code == 0 && steps.find-comment.outputs.comment-id
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
-          comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            <!-- format-check-summary -->
-
-            Your PR no longer requires formatting changes. Thank you for your contribution!
-          edit-mode: replace
+          name: format-check
+          path: |
+            metadata.txt
+            diff.patch
+          if-no-files-found: ignore
 
       - name: Propagate exit code
         run: |
+          # exit 0 -> already formatted; exit 1 -> formatting needed;
+          # exit 2 -> formatter itself errored. The check status reflects
+          # this directly so branch protection can require it.
           exit ${{ steps.format.outputs.exit_code }}

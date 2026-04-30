@@ -8,8 +8,8 @@ on:
         default: "1"
         required: false
         type: string
-      pkg:
-        description: "Package name without `.jl` (e.g. ITensors for ITensors.jl), or a URL (https/git@) for private or unregistered packages."
+      pkgs:
+        description: "JSON-array string of package names (e.g. `'[\"BlockSparseArrays\", \"GradedArrays\"]'`) and/or git URLs (https/git@) for unregistered or private packages. Use `'[]'` when no downstream integration tests should run."
         required: true
         type: string
       localregistry:
@@ -34,58 +34,99 @@ on:
 
 jobs:
   test:
-    name: ${{ inputs.pkg }}
+    name: ${{ matrix.pkg }}
     if: "!github.event.pull_request.draft || inputs.run-on-draft"
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        pkg: ${{ fromJSON(inputs.pkgs) }}
 
     steps:
-      - name: "No downstream packages configured"
-        if: inputs.pkg == '__none__'
-        run: echo "No downstream integration tests configured."
+      # Decide whether this matrix leg should run, and emit `skip=true|false`.
+      # Skips when the entry is a URL that needs auth and the PR is from a
+      # fork (no secrets are exposed to fork PRs under `pull_request:`).
+      # Runs in every other case, including registered package names,
+      # URL entries reachable anonymously, and URL entries on internal PRs /
+      # push events / `pull_request_target` / `issue_comment` /
+      # `workflow_dispatch` (where secrets are in scope).
+      - name: "Decide whether to run"
+        id: gate
+        env:
+          PKG: ${{ matrix.pkg }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$PKG" != https://* && "$PKG" != git@* ]]; then
+            echo "Registered package '$PKG'; running test."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # URL-based dep: probe anonymously to detect whether auth is needed.
+          # `credential.helper=` disables any helper that might silently
+          # supply credentials; `timeout` bounds a slow network probe.
+          if timeout 30 git -c credential.helper= ls-remote --exit-code "$PKG" HEAD &>/dev/null; then
+            echo "URL '$PKG' is reachable anonymously; running test."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Anonymous probe failed: the URL needs auth (or is unreachable).
+          # Skip only in the one context where the workflow has no secrets:
+          # a `pull_request` event from a fork.
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$HEAD_REPO" ] && [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::notice::URL dependency '$PKG' requires authentication and this PR is from a fork. Skipping. Run \`/integrationtest $PKG\` on the PR to test it manually."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "URL '$PKG' needs auth; running with secrets in scope (event '$EVENT_NAME')."
+          echo "skip=false" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
-        if: inputs.pkg != '__none__'
+        if: steps.gate.outputs.skip != 'true'
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: julia-actions/setup-julia@v2
-        if: inputs.pkg != '__none__'
+        if: steps.gate.outputs.skip != 'true'
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - name: "Configure git authentication for private repository"
-        if: inputs.pkg != '__none__'
+        if: steps.gate.outputs.skip != 'true'
         env:
           TOKEN: ${{ secrets.INTEGRATIONTEST_PAT }}
+          PKG: ${{ matrix.pkg }}
         run: |
-          pkg="${{ inputs.pkg }}"
-          if [[ "$pkg" == https://* ]] || [[ "$pkg" == git@* ]]; then
+          if [[ "$PKG" == https://* ]] || [[ "$PKG" == git@* ]]; then
             if [ -n "$TOKEN" ]; then
               git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
             fi
           fi
       - name: Run the downstream tests
-        if: inputs.pkg != '__none__'
+        if: steps.gate.outputs.skip != 'true'
         shell: julia --color=yes --project=downstream {0}
         env:
+          PKG: ${{ matrix.pkg }}
+          LOCALREGISTRY: ${{ inputs.localregistry }}
+          EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
           JULIA_PKG_SERVER_REGISTRY_PREFERENCE: eager
         run: |
           using Pkg
           Pkg.Registry.add("General")
           # If provided add local registries
-          if !isempty("${{ inputs.localregistry }}")
-            registry_urls = split("${{ inputs.localregistry }}", "\n") .|> string
+          localregistry = get(ENV, "LOCALREGISTRY", "")
+          if !isempty(localregistry)
+            registry_urls = split(localregistry, "\n") .|> string
             for registry_url in registry_urls
               isempty(registry_url) && continue
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
-          dev_paths = [".", split("${{ inputs['extra-dev-paths'] }}", "\n")...]
+          dev_paths = [".", split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
           filter!(!isempty, dev_paths)
           dev_specs = [PackageSpec(; path) for path in dev_paths]
-          pkg = "${{ inputs.pkg }}"
+          pkg = get(ENV, "PKG", "")
           try
             if startswith(pkg, "https://") || startswith(pkg, "git@")
               # URL: unregistered or private package, skip version-pinning.
@@ -116,3 +157,46 @@ jobs:
             @info "Not compatible with this release. No problem." exception=err
             exit(0)  # Exit immediately, as a success
           end
+
+  # Aggregate the matrix result into a single check named "IntegrationTest"
+  # that branch protection can require. Behavior:
+  #   - matrix succeeded            -> pass
+  #   - `pkgs: '[]'`                -> pass (no downstream configured)
+  #   - matrix all-skipped + fork   -> fail with /integrationtest hint
+  #   - any failure                 -> fail
+  # The fork-PR-all-skipped case is the trigger for the manual
+  # `/integrationtest <pkg>` flow in IntegrationTestRequest.yml, which
+  # posts a passing check with the same name to satisfy branch protection.
+  gate:
+    name: "IntegrationTest"
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: "Verify integration tests"
+        env:
+          PKGS: ${{ inputs.pkgs }}
+          RESULT: ${{ needs.test.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME"
+          if [ "$RESULT" = "success" ]; then
+            exit 0
+          fi
+          if [ "$RESULT" = "skipped" ]; then
+            if [ "$PKGS" = "[]" ]; then
+              echo "No downstream integration tests configured; passing."
+              exit 0
+            fi
+            if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$HEAD_REPO" ] && [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+              echo "::error::All downstream integration tests skipped on this fork PR. A maintainer must run \`/integrationtest <pkg>\` for each private dep before merging."
+              exit 1
+            fi
+            echo "::error::Integration matrix unexpectedly all skipped (event=$EVENT_NAME)."
+            exit 1
+          fi
+          echo "::error::Integration tests did not pass (result=$RESULT)."
+          exit 1

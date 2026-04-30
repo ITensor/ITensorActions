@@ -108,6 +108,8 @@ on:
 jobs:
   tests:
     name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
+    permissions:
+      contents: read
     if: >-
       !github.event.pull_request.draft
       || inputs.run-all-on-draft
@@ -120,9 +122,14 @@ jobs:
 
       - name: "Install apt packages"
         if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${{ inputs.apt-packages }}
+          # `apt-get install` accepts a space-separated list; we deliberately
+          # don't quote to allow the multi-package case.
+          # shellcheck disable=SC2086
+          sudo apt-get install -y $APT_PACKAGES
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -143,8 +150,10 @@ jobs:
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"
         shell: "bash"
+        env:
+          EXTRA_ENV: ${{ inputs.extra-env }}
         run: |
-          echo "${{ inputs.extra-env }}" >> "$GITHUB_ENV"
+          printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
 
       - name: "Run tests ${{ inputs.self-hosted && '' || format('on {0}', inputs.os) }} with Julia v${{ inputs.julia-version }}"
         uses: julia-actions/julia-runtest@v1

@@ -15,6 +15,8 @@ on:
 jobs:
   TagBotITensorRegistry:
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
     steps:
       - uses: "JuliaRegistries/TagBot@v1"
         with:
@@ -22,6 +24,8 @@ jobs:
           registry: "ITensor/ITensorRegistry"
   TagBotGeneral:
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
     steps:
       - uses: "JuliaRegistries/TagBot@v1"
         with:
