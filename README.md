@@ -573,6 +573,7 @@ The companion `IntegrationTestRequest.yml` workflow (used for the `/integrationt
 |---|---|---|---|
 | `trigger` | string | `"/integrationtest"` | Comment trigger phrase. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `extra-dev-paths` | string | `""` | Newline-separated list of additional local package paths to develop alongside the repository root before resolving downstream tests. |
 
 ### Secrets
 

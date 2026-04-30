@@ -13,6 +13,11 @@ on:
         default: ""
         required: false
         type: string
+      extra-dev-paths:
+        description: "Additional local package paths to develop alongside the repository root, specified as a newline-separated list."
+        default: ""
+        required: false
+        type: string
 
 jobs:
   get-pr-comment:
@@ -54,6 +59,7 @@ jobs:
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
       localregistry: "${{ inputs.localregistry }}"
+      extra-dev-paths: "${{ inputs.extra-dev-paths }}"
       pkgs: ${{ needs.get-pr-comment.outputs.pkgs }}
     secrets: inherit
 
