@@ -362,8 +362,8 @@ since it is safe to register the changes without breaking downstream
 packages if they follow semver in their compat versions.
 Additionally, if some dependent packages being tested are registered in one or more
 local registry, you can specify a list of local registries using their
-repository URLs using the `localregisty` option,
-which should be a string with registry URLs seperated by a newline character (`\n`).
+repository URLs using the `localregistry` option,
+which should be a string with registry URLs separated by a newline character (`\n`).
 Here is an example workflow:
 
 ```yaml
@@ -394,6 +394,38 @@ jobs:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
       pkg: "${{ matrix.pkg }}"
 ```
+
+The workflow does not run `julia-actions/julia-buildpkg` before testing. It
+tests downstream packages in a separate `downstream` project, where the package
+under test is developed from the PR checkout before the downstream tests run.
+The package's own test workflow should be responsible for checking that the
+package itself builds and tests successfully.
+
+### Developing additional local package paths
+
+Some repositories contain multiple packages that should be developed together
+when testing downstream packages. For example, a parent package may depend on
+an in-repository subpackage whose new version has not been registered yet. Use
+`extra-dev-paths` to develop additional local package paths alongside the
+repository root:
+
+```yaml
+jobs:
+  integration-test:
+    name: "IntegrationTest"
+    strategy:
+      matrix:
+        pkg:
+          - 'ITensorMPS'
+          - 'ITensorNetworks'
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    with:
+      localregistry: "https://github.com/ITensor/ITensorRegistry.git"
+      extra-dev-paths: "NDTensors"
+      pkg: "${{ matrix.pkg }}"
+```
+
+For multiple extra paths, use a newline-separated string.
 
 ### Private or unregistered packages
 
@@ -465,6 +497,7 @@ jobs:
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
 | `pkg` | string | **required** | Package name (without `.jl`, e.g. `ITensors` for `ITensors.jl`) or a URL (`https://...` or `git@...`) for private or unregistered packages. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `extra-dev-paths` | string | `""` | Newline-separated list of additional local package paths to develop alongside the repository root before testing downstream packages. |
 | `run-on-draft` | bool | `false` | Run integration tests on draft PRs. When `false`, draft PRs skip integration tests entirely. |
 
 The companion `IntegrationTestRequest.yml` workflow (used for the `/integrationtest ...` comment trigger shown above) has its own inputs:

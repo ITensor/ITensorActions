@@ -17,6 +17,11 @@ on:
         default: ""
         required: false
         type: string
+      extra-dev-paths:
+        description: "Additional local package paths to develop alongside the repository root, specified as a newline-separated list."
+        default: ""
+        required: false
+        type: string
       run-on-draft:
         description: "When true, run integration tests even on draft PRs"
         default: false
@@ -50,10 +55,6 @@ jobs:
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
-      - uses: julia-actions/julia-buildpkg@latest
-        if: inputs.pkg != '__none__'
-        with:
-          localregistry: "${{ inputs.localregistry }}"
       - name: "Configure git authentication for private repository"
         if: inputs.pkg != '__none__'
         env:
@@ -68,8 +69,11 @@ jobs:
       - name: Run the downstream tests
         if: inputs.pkg != '__none__'
         shell: julia --color=yes --project=downstream {0}
+        env:
+          JULIA_PKG_SERVER_REGISTRY_PREFERENCE: eager
         run: |
           using Pkg
+          Pkg.Registry.add("General")
           # If provided add local registries
           if !isempty("${{ inputs.localregistry }}")
             registry_urls = split("${{ inputs.localregistry }}", "\n") .|> string
@@ -78,13 +82,16 @@ jobs:
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
+          dev_paths = [".", split("${{ inputs['extra-dev-paths'] }}", "\n")...]
+          filter!(!isempty, dev_paths)
+          dev_specs = [PackageSpec(; path) for path in dev_paths]
           pkg = "${{ inputs.pkg }}"
           try
             if startswith(pkg, "https://") || startswith(pkg, "git@")
               # URL: unregistered or private package, skip version-pinning.
               pkg_name = replace(basename(pkg), r"\.jl$" => "")
               Pkg.add(PackageSpec(; url=pkg))  # resolver may fail with main deps
-              Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
+              Pkg.develop(dev_specs)  # resolver may fail with main deps
               Pkg.update()
               Pkg.test(PackageSpec(; name=pkg_name))  # resolver may fail with test time deps
             else
@@ -94,7 +101,7 @@ jobs:
               eval(Expr(:using, :($(Expr(:., Symbol(pkg))))))
               version = pkgversion(eval(Symbol(pkg)))
               # force it to use this PR's version of the package
-              Pkg.develop(PackageSpec(; path="."))  # resolver may fail with main deps
+              Pkg.develop(dev_specs)  # resolver may fail with main deps
               Pkg.update()
               # Try forcing the installation of the package at the latest version
               # to see if there is a compatibility issue.
