@@ -6,9 +6,9 @@ name: "Reusable Format Checking Workflow"
 # secrets. The check status this workflow emits is what branch
 # protection should require.
 #
-# Companion: FormatCheckPostback.yml runs on `workflow_run:` after this
+# Companion: FormatCheckComment.yml runs on `workflow_run:` after this
 # workflow finishes, downloads the artifact uploaded here, and posts /
-# updates the format-suggestion comment. The postback runs in the base
+# updates the format-suggestion comment. The comment workflow runs in the base
 # repo's trusted context so it can use `FORMATPULLREQUEST_PAT` without
 # exposing it to the parse phase.
 
@@ -53,6 +53,7 @@ jobs:
       - name: Check out PR head
         uses: actions/checkout@v5
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
@@ -98,7 +99,7 @@ jobs:
             echo "exit_code=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Save metadata for postback
+      - name: Save metadata for comment workflow
         if: ${{ always() }}
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -111,7 +112,7 @@ jobs:
             echo "exit_code=${EXIT_CODE:-2}"
           } > metadata.txt
 
-      - name: Upload artifact for postback
+      - name: Upload artifact for comment workflow
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:

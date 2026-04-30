@@ -100,7 +100,7 @@ jobs:
           - ubuntu-latest
           - macOS-latest
           - windows-latest
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
     with:
       group: "${{ matrix.group }}"
       julia-version: "${{ matrix.version }}"
@@ -119,7 +119,7 @@ This is controlled by the `run-all-on-draft` input (default: `false`). To run
 the full matrix even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
     with:
       run-all-on-draft: true
       # ...
@@ -190,7 +190,7 @@ concurrency:
 jobs:
   build-and-deploy-docs:
     name: "Documentation"
-    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@v1"
     secrets: "inherit"
 ```
 
@@ -228,10 +228,10 @@ There are three workflows available: one for simply verifying the formatting, on
 
 Format Check is split into two reusable workflows for security: a
 **parse phase** that runs the formatter on the PR head with no
-secrets in scope, and a **postback phase** that runs in the trusted
+secrets in scope, and a **comment phase** that runs in the trusted
 base-repo context and posts the format-suggestion comment. Branch
 protection should require the parse phase's check
-(`Format Check / Check Formatting`); the postback exists only to
+(`Format Check / Check Formatting`); the comment workflow exists only to
 update the comment.
 
 The split uses GitHub's standard `pull_request:` + `workflow_run:`
@@ -240,10 +240,10 @@ for the rationale: running PR-controlled code (a formatter parsing
 PR source) with `FORMATPULLREQUEST_PAT` in scope would be the same
 risky shape as the IntegrationTest pre-fix configuration.
 
-Add **two** workflow files per repo:
+Add two downstream workflow files:
 
 ```yaml
-# .github/workflows/FormatCheck.yml — parse phase
+# .github/workflows/FormatCheck.yml
 name: "Format Check"
 
 on:
@@ -252,34 +252,37 @@ on:
 
 jobs:
   format-check:
+    name: "Format Check"
     uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@v1"
     with:
       directory: "." # Customize this to check a specific directory
 ```
 
 ```yaml
-# .github/workflows/FormatCheckPostback.yml — postback phase
-name: "Format Check Postback"
+# .github/workflows/FormatCheckComment.yml
+name: "Format Check Comment"
 
 on:
   workflow_run:
     workflows: ["Format Check"]
     types: [completed]
 
-permissions:
-  pull-requests: write
-  actions: read
-
 jobs:
-  postback:
-    uses: "ITensor/ITensorActions/.github/workflows/FormatCheckPostback.yml@v1"
+  comment:
+    name: "Format Check Comment"
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+    permissions:
+      pull-requests: write
+      actions: read
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheckComment.yml@v1"
     secrets: inherit
 ```
 
 The parse-phase workflow uploads the formatter's diff and the PR
-metadata as an artifact named `format-check`; the postback workflow
-downloads it after the parse run completes and posts or updates the
-suggestion comment.
+metadata as an artifact named `format-check`; the comment workflow
+downloads it from a separate `workflow_run` event after the parse run
+completes and posts or updates the suggestion comment.
 
 #### Format Check inputs
 
@@ -290,11 +293,11 @@ suggestion comment.
 | `concurrent-jobs` | bool | `false` | When `true`, runs use `github.run_id` as the concurrency group (each run gets its own group). When `false`, runs share `github.ref` and older runs are cancelled. |
 | `cancel-in-progress` | bool | `true` | Whether to cancel in-progress runs in the same concurrency group. Only effective when `concurrent-jobs` is `false`. |
 
-#### Format Check Postback inputs
+#### Format Check Comment inputs
 
 | Input | Type | Default | Description |
 |---|---|---|---|
-| `check-name` | string | `"Format Check"` | Name of the parse-phase workflow whose `workflow_run` events trigger the postback. Override only if the parse-phase workflow's `name:` differs. |
+| `check-name` | string | `"Format Check"` | Name of the parse-phase workflow whose `workflow_run` events trigger the comment workflow. Override only if the parse-phase workflow's `name:` differs. |
 
 ### Format Pull Request
 
@@ -324,7 +327,7 @@ permissions:
 jobs:
   format-pull-request:
     name: "Format Pull Request"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@v1"
     with:
       directory: "." # Customize this to check a specific directory
       # trigger: "/format" # Customize the on-demand trigger phrase (default: "/format")
@@ -356,7 +359,7 @@ on:
 jobs:
   format-check:
     name: "Literate Check"
-    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@v1"
 ```
 
 ### Inputs
@@ -398,7 +401,7 @@ permissions:
 jobs:
   compat-helper:
     name: "CompatHelper"
-    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@v1"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
     secrets: inherit
@@ -442,11 +445,17 @@ on:
 
 jobs:
   integration-test:
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    name: "IntegrationTest"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      pkgs: '["BlockSparseArrays", "NamedDimsArrays", "TensorAlgebra"]'
+      pkgs: |
+        [
+          "BlockSparseArrays",
+          "NamedDimsArrays",
+          "TensorAlgebra"
+        ]
 ```
 
 The workflow does not run `julia-actions/julia-buildpkg` before testing. It
@@ -466,10 +475,15 @@ repository root:
 ```yaml
 jobs:
   integration-test:
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    name: "IntegrationTest"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      pkgs: '["ITensorMPS", "ITensorNetworks"]'
+      pkgs: |
+        [
+          "ITensorMPS",
+          "ITensorNetworks"
+        ]
       extra-dev-paths: |
         NDTensors
 ```
@@ -511,11 +525,16 @@ push events use the PAT to clone; fork PRs do not see the PAT.
 ```yaml
 jobs:
   integration-test:
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    name: "IntegrationTest"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      pkgs: '["BlockSparseArrays", "https://github.com/MyOrg/MyPrivatePackage.jl"]'
+      pkgs: |
+        [
+          "BlockSparseArrays",
+          "https://github.com/MyOrg/MyPrivatePackage.jl"
+        ]
 ```
 
 When a fork PR's matrix is **entirely** private URLs (every leg skipped), the
@@ -531,7 +550,7 @@ controlled by the `run-on-draft` input (default: `false`). To run integration
 tests even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     with:
       run-on-draft: true
       # ...
@@ -552,7 +571,7 @@ jobs:
     if: |
       github.event.issue.pull_request &&
       contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association)
-    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@main
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@v1
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -595,7 +614,7 @@ on:
 jobs:
   version-check:
     name: "Version Check"
-    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@v1"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -639,7 +658,7 @@ on:
 jobs:
   check-compat-bounds:
     name: "Check Compat Bounds"
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -661,7 +680,7 @@ jobs:
 Example — restrict the check to CompatHelper/Dependabot PRs only:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
     with:
       mode: auto
 ```
@@ -735,7 +754,7 @@ permissions:
 
 jobs:
   Register:
-    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@v1"
     with:
       localregistry: "ITensor/ITensorRegistry" # omit if package is in General
     secrets: "inherit"
@@ -792,7 +811,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
     secrets: inherit
 ```
 
@@ -842,7 +861,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
     with:
       subdirs: '["NDTensors"]'
     secrets: inherit

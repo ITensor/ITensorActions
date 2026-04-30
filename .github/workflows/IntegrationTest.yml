@@ -83,6 +83,23 @@ jobs:
           fi
           echo "URL '$PKG' needs auth; running with secrets in scope (event '$EVENT_NAME')."
           echo "skip=false" >> "$GITHUB_OUTPUT"
+      - name: "Record skipped dependency"
+        id: skip_artifact
+        if: steps.gate.outputs.skip == 'true'
+        env:
+          PKG: ${{ matrix.pkg }}
+        run: |
+          key=$(printf '%s' "$PKG" | shasum -a 256 | cut -d ' ' -f 1)
+          path="integration-test-skip-${key}.txt"
+          printf '%s\n' "$PKG" > "$path"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - name: "Upload skipped-dependency marker"
+        if: steps.gate.outputs.skip == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-skip-${{ steps.skip_artifact.outputs.key }}
+          path: ${{ steps.skip_artifact.outputs.path }}
       - uses: actions/checkout@v4
         if: steps.gate.outputs.skip != 'true'
         with:
@@ -172,8 +189,16 @@ jobs:
     needs: test
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      actions: read
     steps:
+      - name: "Download skipped-dependency markers"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: integration-test-skip-*
+          path: skipped-integration-tests
+          merge-multiple: true
+        continue-on-error: true
       - name: "Verify integration tests"
         env:
           PKGS: ${{ inputs.pkgs }}
@@ -183,7 +208,20 @@ jobs:
           BASE_REPO: ${{ github.repository }}
         run: |
           echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME"
+          pkg_count=$(printf '%s' "$PKGS" | jq 'length')
+          skipped_count=0
+          if [ -d skipped-integration-tests ]; then
+            skipped_count=$(find skipped-integration-tests -type f | wc -l | tr -d ' ')
+          fi
+          echo "skipped dependency count: $skipped_count / $pkg_count"
           if [ "$RESULT" = "success" ]; then
+            if [ "$skipped_count" -gt 0 ]; then
+              if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$HEAD_REPO" ] && [ "$HEAD_REPO" != "$BASE_REPO" ] && [ "$skipped_count" -eq "$pkg_count" ]; then
+                echo "::error::All downstream integration tests skipped on this fork PR. A maintainer must run \`/integrationtest <pkg>\` for each private dep before merging."
+                exit 1
+              fi
+              echo "::notice::$skipped_count downstream integration test(s) skipped because they require authentication in this event context."
+            fi
             exit 0
           fi
           if [ "$RESULT" = "skipped" ]; then

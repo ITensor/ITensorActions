@@ -1,11 +1,10 @@
-name: "Reusable Format Check Postback Workflow"
+name: "Reusable Format Check Comment Workflow"
 
-# Postback phase of the format-check pipeline. Triggered by a
-# `workflow_run` event after FormatCheck.yml completes. Runs in the
-# base repo's trusted context (with secrets, write-scope
-# `GITHUB_TOKEN`) and never touches PR-controlled code: it only
-# downloads the diff artifact produced by the parse phase and posts
-# or updates the format-suggestion comment on the PR.
+# Comment phase of the format-check pipeline. Triggered by a `workflow_run`
+# event after FormatCheck.yml completes. Runs in the base repo's trusted
+# context (with secrets, write-scope `GITHUB_TOKEN`) and never touches
+# PR-controlled code: it only downloads the diff artifact produced by the parse
+# phase and posts or updates the format-suggestion comment on the PR.
 #
 # Branch protection should require the FormatCheck check, not this
 # one — this workflow's job exists to update the comment, not to gate
@@ -15,13 +14,13 @@ on:
   workflow_call:
     inputs:
       check-name:
-        description: "Name of the parse-phase workflow this postback runs against. Used to filter unrelated workflow_run events."
+        description: "Name of the parse-phase workflow this comment workflow runs after. Used to filter unrelated workflow_run events."
         default: "Format Check"
         required: false
         type: string
 
 jobs:
-  postback:
+  comment:
     name: "Post format-check comment"
     # Only run when the parse-phase workflow that triggered us is the
     # expected FormatCheck workflow on a pull_request event.
@@ -47,14 +46,14 @@ jobs:
         id: meta
         run: |
           if [ ! -f metadata.txt ]; then
-            echo "metadata.txt missing; skipping postback."
+            echo "metadata.txt missing; skipping comment update."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           PR_NUMBER=$(grep -E '^pr_number=' metadata.txt | cut -d= -f2-)
           EXIT_CODE=$(grep -E '^exit_code=' metadata.txt | cut -d= -f2-)
           if [ -z "$PR_NUMBER" ]; then
-            echo "pr_number empty; skipping postback."
+            echo "pr_number empty; skipping comment update."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
