@@ -107,6 +107,10 @@ jobs:
           end
           subdirs = ["", "docs", "examples", "test"]
           token_owner = get(ENV, "TOKEN_OWNER", "")
+          # If TOKEN_OWNER contains a JSON error body (happens when only GITHUB_TOKEN
+          # is available, e.g. in private repos without COMPATHELPER_PAT), treat it as
+          # empty so CompatHelper falls back to the default "github-actions[bot]" username.
+          startswith(token_owner, '{') && (token_owner = "")
           ci_cfg = isempty(token_owner) ?
               CompatHelper.GitHubActions() :
               CompatHelper.GitHubActions(; username=token_owner)
