@@ -87,7 +87,7 @@ for f in "${files[@]}"; do
     # macOS sed needs `-i ''`; GNU sed accepts `-i` alone. Using `-i.bak`
     # is the most portable form.
     sed -E -i.bak \
-      "s|(ITensor/ITensorActions/\\.github/(workflows|actions)/[^@[:space:]]+)@main|\\1@${HEAD_SHA}|g" \
+      "s#(ITensor/ITensorActions/\\.github/(workflows|actions)/[^@[:space:]]+)@main#\\1@${HEAD_SHA}#g" \
       "$f"
     rm "$f.bak"
     rewritten=$((rewritten + 1))
