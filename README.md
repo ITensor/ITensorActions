@@ -31,6 +31,10 @@ Each released commit should be assigned exactly one of the three bump
 types above. Keep `v1.0.0`, `v1.1.0`, etc. immutable; move the mutable
 `v1` tag to the newest `v1.x.y` release.
 
+Docs-only PRs (for example README clarifications that do not change
+workflow behavior) do not require a SemVer release, do not require a
+new `v1.x.y` tag, and should not move `v1`.
+
 Breaking changes (e.g. a renamed input) bump the major version. The
 old major tag stays in place so existing callers keep working until
 they migrate.
