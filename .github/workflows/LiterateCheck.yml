@@ -29,6 +29,8 @@ jobs:
   literate:
     name: "Literate Check"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -36,6 +38,8 @@ jobs:
           version: "${{ inputs.julia-version }}"
       - name: Setup project
         shell: julia --project=docs --color=yes {0}
+        env:
+          LOCALREGISTRY: ${{ inputs.localregistry }}
         run: |
           import Pkg
           if VERSION >= v"1.8-"
@@ -43,8 +47,9 @@ jobs:
           else
             Pkg.Registry.add("General")
           end
-          if !isempty("${{ inputs.localregistry }}")
-            local_repos = split("${{ inputs.localregistry }}", "\n") .|> string
+          localregistry = get(ENV, "LOCALREGISTRY", "")
+          if !isempty(localregistry)
+            local_repos = split(localregistry, "\n") .|> string
             for repo_url in local_repos
               isempty(repo_url) && continue
               Pkg.Registry.add(Pkg.RegistrySpec(; url=repo_url))

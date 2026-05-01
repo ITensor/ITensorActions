@@ -1,0 +1,114 @@
+name: "Reusable Format Check Comment Workflow"
+
+# Comment phase of the format-check pipeline. Triggered by a `workflow_run`
+# event after FormatCheck.yml completes. Runs in the base repo's trusted
+# context (with secrets, write-scope `GITHUB_TOKEN`) and never touches
+# PR-controlled code: it only downloads the diff artifact produced by the parse
+# phase and posts or updates the format-suggestion comment on the PR.
+#
+# Branch protection should require the FormatCheck check, not this
+# one — this workflow's job exists to update the comment, not to gate
+# merging.
+
+on:
+  workflow_call:
+    inputs:
+      check-name:
+        description: "Name of the parse-phase workflow this comment workflow runs after. Used to filter unrelated workflow_run events."
+        default: "Format Check"
+        required: false
+        type: string
+
+jobs:
+  comment:
+    name: "Post format-check comment"
+    # Only run when the parse-phase workflow that triggered us is the
+    # expected FormatCheck workflow on a pull_request event.
+    if: >-
+      github.event.workflow_run.name == inputs.check-name
+      && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Download FormatCheck artifact
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: format-check
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Read metadata
+        if: steps.download.outcome == 'success'
+        id: meta
+        run: |
+          if [ ! -f metadata.txt ]; then
+            echo "metadata.txt missing; skipping comment update."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PR_NUMBER=$(grep -E '^pr_number=' metadata.txt | cut -d= -f2-)
+          EXIT_CODE=$(grep -E '^exit_code=' metadata.txt | cut -d= -f2-)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "pr_number empty; skipping comment update."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Find existing format-check comment
+        if: steps.meta.outputs.skip == 'false'
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body-includes: "<!-- format-check-summary -->"
+
+      - name: Compose suggestion-comment body
+        if: steps.meta.outputs.skip == 'false' && steps.meta.outputs.exit_code == '1'
+        run: |
+          {
+            echo "<!-- format-check-summary -->"
+            echo
+            echo "Your PR requires formatting changes to meet the project's style guidelines."
+            echo "Please run the [ITensorFormatter](https://github.com/ITensor/ITensorFormatter.jl) to apply these changes."
+            echo
+            echo "<details>"
+            echo "<summary>Click here to view the suggested changes.</summary>"
+            echo
+            echo '~~~diff'
+            cat diff.patch
+            echo
+            echo '~~~'
+            echo
+            echo "</details>"
+          } > comment-body.md
+
+      - name: Post or update suggestion comment
+        if: steps.meta.outputs.skip == 'false' && steps.meta.outputs.exit_code == '1'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body-path: comment-body.md
+          edit-mode: replace
+
+      - name: Clear stale comment when formatting now passes
+        if: steps.meta.outputs.skip == 'false' && steps.meta.outputs.exit_code == '0' && steps.find-comment.outputs.comment-id
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body: |
+            <!-- format-check-summary -->
+
+            Your PR no longer requires formatting changes. Thank you for your contribution!
+          edit-mode: replace

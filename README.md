@@ -1,6 +1,32 @@
 # ITensorActions
 
-Shared workflows for the ITensors Julia packages
+Shared workflows for the ITensors Julia packages.
+
+## Versioning
+
+Callers should pin to a major-version tag rather than to `@main`:
+
+```yaml
+uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
+```
+
+Releases follow `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`, `v1.0.1`,
+`v1.1.0`). A mutable major-version tag (`v1`) is updated to point at
+the latest `v1.x.y` after each release, mirroring the convention
+used by `actions/checkout`, `julia-actions/setup-julia`, and similar
+third-party reusable actions. Callers should reference `@v1` for
+"latest in major version 1"; SHA-pinning to a specific `v1.x.y`
+release is also supported when extra rigor is needed.
+
+Breaking changes (e.g. a renamed input) bump the major version. The
+old major tag stays in place so existing callers keep working until
+they migrate.
+
+To cut a release, run `.scripts/release.sh vX.Y.Z` from a clean
+`main` checkout. The script rewrites internal `@main` references in
+the released commit to the current SHA so the tagged release is a
+fully snapshot-stable bundle (its workflows reference its own
+companion actions at a fixed commit, not at moving `@main`).
 
 ## Tests
 
@@ -74,7 +100,7 @@ jobs:
           - ubuntu-latest
           - macOS-latest
           - windows-latest
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
     with:
       group: "${{ matrix.group }}"
       julia-version: "${{ matrix.version }}"
@@ -93,7 +119,7 @@ This is controlled by the `run-all-on-draft` input (default: `false`). To run
 the full matrix even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
     with:
       run-all-on-draft: true
       # ...
@@ -164,7 +190,7 @@ concurrency:
 jobs:
   build-and-deploy-docs:
     name: "Documentation"
-    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@v1"
     secrets: "inherit"
 ```
 
@@ -200,30 +226,65 @@ There are three workflows available: one for simply verifying the formatting, on
 
 ### Format Check
 
+Format Check is split into two reusable workflows for security: a
+**parse phase** that runs the formatter on the PR head with no
+secrets in scope, and a **comment phase** that runs in the trusted
+base-repo context and posts the format-suggestion comment. Branch
+protection should require the parse phase's check
+(`Format Check / Check Formatting`); the comment workflow exists only to
+update the comment.
+
+The split uses GitHub's standard `pull_request:` + `workflow_run:`
+pattern. See [Securing your GitHub Actions](https://docs.github.com/en/actions/reference/security/secure-use)
+for the rationale: running PR-controlled code (a formatter parsing
+PR source) with `FORMATPULLREQUEST_PAT` in scope would be the same
+risky shape as the IntegrationTest pre-fix configuration.
+
+Add two downstream workflow files:
+
 ```yaml
+# .github/workflows/FormatCheck.yml
 name: "Format Check"
 
 on:
-  push:
-    branches:
-      - 'main'
-    tags: '*'
   pull_request:
-
-permissions:
-  contents: read
-  actions: write
-  pull-requests: write
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   format-check:
     name: "Format Check"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@v1"
     with:
       directory: "." # Customize this to check a specific directory
 ```
 
-#### Inputs
+```yaml
+# .github/workflows/FormatCheckComment.yml
+name: "Format Check Comment"
+
+on:
+  workflow_run:
+    workflows: ["Format Check"]
+    types: [completed]
+
+jobs:
+  comment:
+    name: "Format Check Comment"
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+    permissions:
+      pull-requests: write
+      actions: read
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheckComment.yml@v1"
+    secrets: inherit
+```
+
+The parse-phase workflow uploads the formatter's diff and the PR
+metadata as an artifact named `format-check`; the comment workflow
+downloads it from a separate `workflow_run` event after the parse run
+completes and posts or updates the suggestion comment.
+
+#### Format Check inputs
 
 | Input | Type | Default | Description |
 |---|---|---|---|
@@ -231,6 +292,12 @@ jobs:
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
 | `concurrent-jobs` | bool | `false` | When `true`, runs use `github.run_id` as the concurrency group (each run gets its own group). When `false`, runs share `github.ref` and older runs are cancelled. |
 | `cancel-in-progress` | bool | `true` | Whether to cancel in-progress runs in the same concurrency group. Only effective when `concurrent-jobs` is `false`. |
+
+#### Format Check Comment inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `check-name` | string | `"Format Check"` | Name of the parse-phase workflow whose `workflow_run` events trigger the comment workflow. Override only if the parse-phase workflow's `name:` differs. |
 
 ### Format Pull Request
 
@@ -260,7 +327,7 @@ permissions:
 jobs:
   format-pull-request:
     name: "Format Pull Request"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@v1"
     with:
       directory: "." # Customize this to check a specific directory
       # trigger: "/format" # Customize the on-demand trigger phrase (default: "/format")
@@ -292,7 +359,7 @@ on:
 jobs:
   format-check:
     name: "Literate Check"
-    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@v1"
 ```
 
 ### Inputs
@@ -334,7 +401,7 @@ permissions:
 jobs:
   compat-helper:
     name: "CompatHelper"
-    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@v1"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
     secrets: inherit
@@ -364,35 +431,31 @@ Additionally, if some dependent packages being tested are registered in one or m
 local registry, you can specify a list of local registries using their
 repository URLs using the `localregistry` option,
 which should be a string with registry URLs separated by a newline character (`\n`).
-Here is an example workflow:
+The reusable workflow expands its own matrix internally — callers pass the list of
+packages to test as a JSON array via the `pkgs` input. Here is an example:
 
 ```yaml
 name: "IntegrationTest"
 
 on:
   push:
-    branches:
-      - 'main'
-    tags: '*'
-    paths:
-      - 'Project.toml'
+    branches: ["main"]
   pull_request:
-    paths:
-      - 'Project.toml'
+    types: ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]
 
 jobs:
   integration-test:
     name: "IntegrationTest"
-    strategy:
-       matrix:
-         pkg:
-           - 'BlockSparseArrays'
-           - 'NamedDimsArrays'
-           - 'TensorAlgebra'
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      pkg: "${{ matrix.pkg }}"
+      pkgs: |
+        [
+          "BlockSparseArrays",
+          "NamedDimsArrays",
+          "TensorAlgebra"
+        ]
 ```
 
 The workflow does not run `julia-actions/julia-buildpkg` before testing. It
@@ -413,49 +476,72 @@ repository root:
 jobs:
   integration-test:
     name: "IntegrationTest"
-    strategy:
-      matrix:
-        pkg:
-          - 'ITensorMPS'
-          - 'ITensorNetworks'
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      extra-dev-paths: "NDTensors"
-      pkg: "${{ matrix.pkg }}"
+      pkgs: |
+        [
+          "ITensorMPS",
+          "ITensorNetworks"
+        ]
+      extra-dev-paths: |
+        NDTensors
 ```
 
 For multiple extra paths, use a newline-separated string.
 
+The workflow also emits a single `IntegrationTest` check that aggregates the matrix
+result, suitable for use as a required status check in branch protection.
+
+Use `pkgs: '[]'` if no downstream tests are configured; the aggregate check passes.
+
+### Trigger choice: `pull_request` not `pull_request_target`
+
+Use `on: pull_request:` so that fork PRs run without access to repository secrets.
+`pull_request_target:` would expose `INTEGRATIONTEST_PAT` and a write-scope
+`GITHUB_TOKEN` to PR-controlled Julia code (via `Pkg.test`), which is the pattern
+exploited in the 2025 Trivy compromise.
+
+Internal PRs (same-repo branches) still receive secrets under `pull_request:`, so
+no behavior changes for the day-to-day workflow.
+
 ### Private or unregistered packages
 
-You can also test private or unregistered packages by passing a URL as the `pkg` value
-instead of a package name. The workflow detects URLs (starting with `https://` or `git@`)
-and installs the package directly from the URL, skipping the version-pinning logic that
-only applies to registered packages.
+`pkgs` entries may be either registered package names (e.g. `"BlockSparseArrays"`)
+or git URLs (e.g. `"https://github.com/MyOrg/MyPrivatePackage.jl"`,
+`"git@github.com:..."`). The workflow:
 
-For private repositories, pass a GitHub token via `secrets: inherit` — the workflow
-expects it as a secret named `INTEGRATIONTEST_PAT`:
+- Runs registered-name entries normally.
+- Probes URL entries anonymously to detect whether they need authentication.
+  Public URLs run normally on every PR.
+- Skips URL entries that need authentication when the event is a fork
+  `pull_request` (no secrets in scope). The skipped leg emits a notice
+  pointing the maintainer at `/integrationtest <url>` (see below).
+
+For private GitHub repos, configure the `INTEGRATIONTEST_PAT` secret at the
+repository or organization level and pass `secrets: "inherit"`. Internal PRs and
+push events use the PAT to clone; fork PRs do not see the PAT.
 
 ```yaml
 jobs:
   integration-test:
     name: "IntegrationTest"
-    strategy:
-      matrix:
-        pkg:
-          - 'BlockSparseArrays'
-          - 'https://github.com/MyOrg/MyPrivatePackage.jl'
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
-    secrets: inherit
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
-      pkg: "${{ matrix.pkg }}"
+      pkgs: |
+        [
+          "BlockSparseArrays",
+          "https://github.com/MyOrg/MyPrivatePackage.jl"
+        ]
 ```
 
-The workflow uses the `INTEGRATIONTEST_PAT` secret for authentication, configured at the
-repository or organization level. When present, it is used to rewrite HTTPS clones of
-GitHub repositories to authenticated URLs so private dependencies can be fetched.
+When a fork PR's matrix is **entirely** private URLs (every leg skipped), the
+aggregate `IntegrationTest` check fails with a message instructing the maintainer
+to run `/integrationtest <url>` for each private dep before merging. The companion
+`IntegrationTestRequest.yml` workflow posts a passing `IntegrationTest` check on
+success, satisfying the gate.
 
 ### Draft PR behavior
 
@@ -464,7 +550,7 @@ controlled by the `run-on-draft` input (default: `false`). To run integration
 tests even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
     with:
       run-on-draft: true
       # ...
@@ -485,7 +571,7 @@ jobs:
     if: |
       github.event.issue.pull_request &&
       contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association)
-    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@main
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@v1
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -495,7 +581,7 @@ jobs:
 | Input | Type | Default | Description |
 |---|---|---|---|
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
-| `pkg` | string | **required** | Package name (without `.jl`, e.g. `ITensors` for `ITensors.jl`) or a URL (`https://...` or `git@...`) for private or unregistered packages. |
+| `pkgs` | string | **required** | JSON-array string of registered package names and/or git URLs. Use `'[]'` to configure no downstream tests. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
 | `extra-dev-paths` | string | `""` | Newline-separated list of additional local package paths to develop alongside the repository root before testing downstream packages. |
 | `run-on-draft` | bool | `false` | Run integration tests on draft PRs. When `false`, draft PRs skip integration tests entirely. |
@@ -506,6 +592,7 @@ The companion `IntegrationTestRequest.yml` workflow (used for the `/integrationt
 |---|---|---|---|
 | `trigger` | string | `"/integrationtest"` | Comment trigger phrase. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `extra-dev-paths` | string | `""` | Newline-separated list of additional local package paths to develop alongside the repository root before resolving downstream tests. |
 
 ### Secrets
 
@@ -527,7 +614,7 @@ on:
 jobs:
   version-check:
     name: "Version Check"
-    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@v1"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -571,7 +658,7 @@ on:
 jobs:
   check-compat-bounds:
     name: "Check Compat Bounds"
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -593,7 +680,7 @@ jobs:
 Example — restrict the check to CompatHelper/Dependabot PRs only:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
     with:
       mode: auto
 ```
@@ -667,7 +754,7 @@ permissions:
 
 jobs:
   Register:
-    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@v1"
     with:
       localregistry: "ITensor/ITensorRegistry" # omit if package is in General
     secrets: "inherit"
@@ -724,7 +811,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
     secrets: inherit
 ```
 
@@ -774,7 +861,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@main"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
     with:
       subdirs: '["NDTensors"]'
     secrets: inherit

@@ -13,42 +13,86 @@ on:
         default: ""
         required: false
         type: string
+      extra-dev-paths:
+        description: "Additional local package paths to develop alongside the repository root, specified as a newline-separated list."
+        default: ""
+        required: false
+        type: string
 
 jobs:
   get-pr-comment:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
-      pkg: ${{ steps.extract.outputs.PKG }}
+      pkgs: ${{ steps.extract.outputs.pkgs }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
       - name: Extract command arguments
         id: extract
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          QUERY: ${{ inputs.trigger }}
         run: |
-          COMMENT="${{ github.event.comment.body }}"
-          QUERY="${{ inputs.trigger }}"
-          # Check if COMMENT starts with QUERY followed by a space
-          if [[ "$COMMENT" == "$QUERY "* ]]; then
-            # Extract everything after QUERY + space
-            PKG="${COMMENT#"$QUERY "}"
-            echo "PKG=$PKG" >> $GITHUB_OUTPUT
-          else
+          if [[ "$COMMENT" != "$QUERY "* ]]; then
             echo "No valid command found, exiting..."
             exit 1
           fi
+          PKG="${COMMENT#"$QUERY "}"
+          # Encode as a single-element JSON array for the IntegrationTest
+          # workflow's `pkgs` input. `jq` handles any escaping for us.
+          PKGS=$(jq -nc --arg pkg "$PKG" '[$pkg]')
+          echo "pkgs=$PKGS" >> "$GITHUB_OUTPUT"
+      - name: Resolve PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   runtests:
     needs: get-pr-comment
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
       localregistry: "${{ inputs.localregistry }}"
-      pkg: "${{ needs.get-pr-comment.outputs.pkg || ''}}"
+      extra-dev-paths: "${{ inputs.extra-dev-paths }}"
+      pkgs: ${{ needs.get-pr-comment.outputs.pkgs }}
     secrets: inherit
 
   report:
     needs: [get-pr-comment, runtests]
+    if: ${{ always() && needs.get-pr-comment.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
     steps:
-      - uses: peter-evans/create-or-update-comment@v4
+      - name: React to triggering comment
+        uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.INTEGRATIONTEST_PAT || github.token }}
           comment-id: ${{ github.event.comment.id }}
           reactions: '+1'
+      # When the test passed, post a check run with the same name that
+      # branch protection requires for IntegrationTest. This lets a
+      # successful `/integrationtest` clear the IntegrationTest gate on
+      # fork PRs whose private-only matrix would otherwise leave that
+      # gate failing.
+      - name: Post passing IntegrationTest check
+        if: ${{ needs.runtests.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ needs.get-pr-comment.outputs.head_sha }}
+        run: |
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name="IntegrationTest" \
+            -f head_sha="$HEAD_SHA" \
+            -f status="completed" \
+            -f conclusion="success" \
+            -f "output[title]=Passed via /integrationtest" \
+            -f "output[summary]=Integration test passed when triggered manually."

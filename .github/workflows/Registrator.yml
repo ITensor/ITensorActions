@@ -34,6 +34,14 @@ jobs:
         contains(github.event.comment.body, inputs.trigger)
       )
 
+    # Writes (commit comment for General path, registry PR for local
+    # path, comment reaction) all use REGISTRATOR_PAT, so this job
+    # itself only needs read scope on the GITHUB_TOKEN. The PAT bypasses
+    # GITHUB_TOKEN's permissions for the actual write operations.
+    permissions:
+      contents: read
+      pull-requests: read
+
     env:
       # Prefer the commit that landed on the base branch when available (merged PRs),
       # otherwise PR head SHA, otherwise github.sha.
@@ -44,12 +52,14 @@ jobs:
         if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TRIGGER: ${{ inputs.trigger }}
         run: |
           BODY=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
-          SHA=$(printf '%s' "$BODY" | grep -oP '${{ inputs.trigger }}\s+\K[0-9a-f]{7,40}' | head -1 || true)
+          SHA=$(printf '%s' "$BODY" | grep -oP "${TRIGGER}"'\s+\K[0-9a-f]{7,40}' | head -1 || true)
           if [ -n "$SHA" ]; then
-            FULL_SHA=$(gh api repos/${{ github.repository }}/commits/$SHA --jq '.sha')
-            echo "TARGET_SHA=$FULL_SHA" >> $GITHUB_ENV
+            FULL_SHA=$(gh api "repos/$REPO/commits/$SHA" --jq '.sha')
+            echo "TARGET_SHA=$FULL_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
@@ -203,13 +213,17 @@ jobs:
       - name: Compose Registrator commit comment
         if: steps.meta.outputs.route == 'general'
         shell: bash
+        env:
+          IS_BREAKING: ${{ steps.meta.outputs.is_breaking }}
+          SUBJECT: ${{ steps.meta.outputs.subject }}
+          NEW_VERSION: ${{ steps.meta.outputs.new_version }}
         run: |
           {
             echo "@JuliaRegistrator register"
-            if [ "${{ steps.meta.outputs.is_breaking }}" = "true" ]; then
+            if [ "$IS_BREAKING" = "true" ]; then
               echo ""
               echo "Release notes:"
-              echo "- breaking: ${{ steps.meta.outputs.subject }} (v${{ steps.meta.outputs.new_version }})"
+              echo "- breaking: $SUBJECT (v$NEW_VERSION)"
             fi
           } > registrator-comment.md
 

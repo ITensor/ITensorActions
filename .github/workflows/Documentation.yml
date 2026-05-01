@@ -75,14 +75,19 @@ jobs:
     name: "Build and Deploy Documentation"
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - name: "Install apt packages"
         if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${{ inputs.apt-packages }}
+          # shellcheck disable=SC2086
+          sudo apt-get install -y $APT_PACKAGES
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
         uses: julia-actions/setup-julia@v2
@@ -97,21 +102,27 @@ jobs:
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"
         shell: "bash"
+        env:
+          EXTRA_ENV: ${{ inputs.extra-env }}
         run: |
-          echo "${{ inputs.extra-env }}" >> "$GITHUB_ENV"
+          printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
 
       - name: Setup project
         shell: "bash"
+        env:
+          DOC_PREFIX: ${{ inputs.doc-prefix }}
+          LOCALREGISTRY: ${{ inputs.localregistry }}
         run: |
-          ${{ inputs.doc-prefix }}julia --project=docs --color=yes <<'EOF'
+          ${DOC_PREFIX}julia --project=docs --color=yes <<'EOF'
           import Pkg
           if VERSION >= v"1.8-"
             Pkg.Registry.add()
           else
             Pkg.Registry.add("General")
           end
-          if !isempty("${{ inputs.localregistry }}")
-            local_repos = split("${{ inputs.localregistry }}", "\n") .|> string
+          localregistry = get(ENV, "LOCALREGISTRY", "")
+          if !isempty(localregistry)
+            local_repos = split(localregistry, "\n") .|> string
             for repo_url in local_repos
               isempty(repo_url) && continue
               Pkg.Registry.add(Pkg.RegistrySpec(; url=repo_url))
@@ -123,7 +134,10 @@ jobs:
       - name: "Build and Deploy Documentation"
         env:
           GITHUB_TOKEN: ${{ inputs.github-token || secrets.GITHUB_TOKEN }}
-        run: ${{ inputs.debug-documenter && 'JULIA_DEBUG="Documenter"' || '' }} ${{ inputs.doc-prefix }}julia --project=docs/ ${{ inputs.coverage && '--code-coverage=user' }} docs/make.jl
+          DOC_PREFIX: ${{ inputs.doc-prefix }}
+          JULIA_DEBUG: ${{ inputs.debug-documenter && 'Documenter' || '' }}
+          COVERAGE_FLAG: ${{ inputs.coverage && '--code-coverage=user' || '' }}
+        run: ${DOC_PREFIX}julia --project=docs/ $COVERAGE_FLAG docs/make.jl
 
       - uses: julia-actions/julia-processcoverage@v1
         if: "${{ inputs.coverage }}"

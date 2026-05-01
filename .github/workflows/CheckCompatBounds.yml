@@ -55,6 +55,8 @@ jobs:
     if: "${{ !github.event.pull_request.draft || inputs.run-on-draft }}"
     runs-on: "ubuntu-latest"
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
