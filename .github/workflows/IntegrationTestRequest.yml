@@ -56,7 +56,7 @@ jobs:
 
   runtests:
     needs: get-pr-comment
-    uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@d5279831ac3809dc8109bc764a497eecf705b500
     with:
       localregistry: "${{ inputs.localregistry }}"
       extra-dev-paths: "${{ inputs.extra-dev-paths }}"
