@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@e591939ccf30ca614024f932ff24c159c07ad594
         id: classify
 
       - name: "Skip version check on non-substantive PR"

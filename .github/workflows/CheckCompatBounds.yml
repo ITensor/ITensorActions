@@ -77,7 +77,7 @@ jobs:
           project: "${{ inputs.project }}"
 
       - name: "Check compat upper bounds"
-        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
+        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@e591939ccf30ca614024f932ff24c159c07ad594
         with:
           workspace-root: "${{ inputs.workspace-root }}"
           mode: "${{ inputs.mode }}"
