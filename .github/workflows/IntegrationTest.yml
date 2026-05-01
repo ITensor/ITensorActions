@@ -209,6 +209,10 @@ jobs:
         run: |
           echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME"
           pkg_count=$(printf '%s' "$PKGS" | jq 'length')
+          if [ "$PKGS" = "[]" ]; then
+            echo "No downstream integration tests configured; passing."
+            exit 0
+          fi
           skipped_count=0
           if [ -d skipped-integration-tests ]; then
             skipped_count=$(find skipped-integration-tests -type f | wc -l | tr -d ' ')
