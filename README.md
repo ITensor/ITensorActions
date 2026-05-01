@@ -18,6 +18,19 @@ third-party reusable actions. Callers should reference `@v1` for
 "latest in major version 1"; SHA-pinning to a specific `v1.x.y`
 release is also supported when extra rigor is needed.
 
+SemVer release decision rule:
+
+- Patch (`v1.0.x`): bug fixes, docs-only improvements, or internal
+  hardening that does not change caller-facing workflow interfaces.
+- Minor (`v1.x.0`): backward-compatible new inputs, new reusable
+  workflows, or additive behavior.
+- Major (`v2.0.0`): breaking caller-facing changes (renamed/removed
+  inputs, changed required secrets/permissions, incompatible behavior).
+
+Each released commit should be assigned exactly one of the three bump
+types above. Keep `v1.0.0`, `v1.1.0`, etc. immutable; move the mutable
+`v1` tag to the newest `v1.x.y` release.
+
 Breaking changes (e.g. a renamed input) bump the major version. The
 old major tag stays in place so existing callers keep working until
 they migrate.
