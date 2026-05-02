@@ -110,10 +110,19 @@ jobs:
       - name: Setup project
         shell: "bash"
         env:
-          DOC_PREFIX: ${{ inputs.doc-prefix }}
           LOCALREGISTRY: ${{ inputs.localregistry }}
+        # `doc-prefix` is rendered directly into the script body so that any
+        # shell quoting in the caller's value (e.g. the single-quoted server
+        # args of `xvfb-run -a -s '-screen 0 1024x768x24'`) is parsed by the
+        # shell with normal quoting rules. Routing it through a `$DOC_PREFIX`
+        # env-var would word-split the literal characters of the value
+        # (including any embedded `'`/`"`/`&`/`;`) instead, breaking commands
+        # like xvfb-run that take a quoted multi-word arg. The audit's
+        # env-mapping pattern is for protecting against untrusted
+        # user-controlled input; reusable-workflow inputs come from the
+        # trusted caller workflow file, so direct substitution is fine here.
         run: |
-          ${DOC_PREFIX}julia --project=docs --color=yes <<'EOF'
+          ${{ inputs.doc-prefix }}julia --project=docs --color=yes <<'EOF'
           import Pkg
           if VERSION >= v"1.8-"
             Pkg.Registry.add()
@@ -134,10 +143,11 @@ jobs:
       - name: "Build and Deploy Documentation"
         env:
           GITHUB_TOKEN: ${{ inputs.github-token || secrets.GITHUB_TOKEN }}
-          DOC_PREFIX: ${{ inputs.doc-prefix }}
           JULIA_DEBUG: ${{ inputs.debug-documenter && 'Documenter' || '' }}
           COVERAGE_FLAG: ${{ inputs.coverage && '--code-coverage=user' || '' }}
-        run: ${DOC_PREFIX}julia --project=docs/ $COVERAGE_FLAG docs/make.jl
+        # `doc-prefix` is rendered directly here — see the rationale on the
+        # "Setup project" step above.
+        run: ${{ inputs.doc-prefix }}julia --project=docs/ $COVERAGE_FLAG docs/make.jl
 
       - uses: julia-actions/julia-processcoverage@v1
         if: "${{ inputs.coverage }}"
