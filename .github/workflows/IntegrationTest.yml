@@ -35,7 +35,15 @@ on:
 jobs:
   test:
     name: ${{ matrix.pkg }}
-    if: "!github.event.pull_request.draft || inputs.run-on-draft"
+    # Skip the matrix-driven leg entirely when `pkgs` is empty. Without this
+    # guard, GitHub Actions reports an empty-matrix job as `failure`, which
+    # propagates to the run's overall conclusion even though the aggregating
+    # `gate` job correctly handles empty `pkgs` by exiting 0. Using
+    # `fromJSON(inputs.pkgs)[0] != null` rather than a string comparison so
+    # the check is robust against whitespace / block-scalar style.
+    if: |
+      fromJSON(inputs.pkgs)[0] != null &&
+      (!github.event.pull_request.draft || inputs.run-on-draft)
     runs-on: ubuntu-latest
     permissions:
       contents: read
