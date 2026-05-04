@@ -11,10 +11,26 @@ name: "CodeQL"
 #
 # Caller wires this up via:
 #
+#   name: "CodeQL"
+#   on:
+#     pull_request:
+#       branches:
+#         - "main"
+#   permissions:
+#     contents: "read"
+#     security-events: "write"
+#     actions: "read"
 #   jobs:
 #     codeql:
 #       name: "CodeQL"
 #       uses: "ITensor/ITensorActions/.github/workflows/CodeQL.yml@v2"
+#
+# The caller-side `permissions:` block is mandatory. After the
+# org-default flip to read-only on 2026-05-04, the reusable's
+# job-level `permissions: { security-events: write }` request is
+# capped by the caller's workflow-level grant — without an explicit
+# `security-events: write` at the caller, CodeQL's SARIF upload
+# fails on every same-repo PR.
 #
 # Resulting check-run name reported to GitHub: `CodeQL / Analyze (actions)`.
 # That's the string the branch ruleset needs to require.
