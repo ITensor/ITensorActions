@@ -48,7 +48,7 @@ jobs:
           token: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
         with:
           version: "${{ inputs.julia-version }}"
           arch: "${{ runner.arch }}"
