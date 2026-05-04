@@ -148,7 +148,7 @@ jobs:
       - name: Create Pull Request
         if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         id: cpr
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "Format .jl files (ITensorFormatter)"
