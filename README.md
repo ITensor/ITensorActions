@@ -10,30 +10,30 @@ Callers should pin to a major-version tag rather than to `@main`:
 uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v2"
 ```
 
-Releases follow `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`, `v1.0.1`,
-`v1.1.0`). A mutable major-version tag (`v1`) is updated to point at
-the latest `v1.x.y` after each release, mirroring the convention
+Releases follow `vMAJOR.MINOR.PATCH` (e.g. `v2.0.0`, `v2.0.1`,
+`v2.1.0`). A mutable major-version tag (`v2`) is updated to point at
+the latest `v2.x.y` after each release, mirroring the convention
 used by `actions/checkout`, `julia-actions/setup-julia`, and similar
 third-party reusable actions. Callers should reference `@v2` for
-"latest in major version 1"; SHA-pinning to a specific `v1.x.y`
+"latest in major version 2"; SHA-pinning to a specific `v2.x.y`
 release is also supported when extra rigor is needed.
 
 SemVer release decision rule:
 
-- Patch (`v1.0.x`): bug fixes, docs-only improvements, or internal
+- Patch (`v2.0.x`): bug fixes, docs-only improvements, or internal
   hardening that does not change caller-facing workflow interfaces.
-- Minor (`v1.x.0`): backward-compatible new inputs, new reusable
+- Minor (`v2.x.0`): backward-compatible new inputs, new reusable
   workflows, or additive behavior.
-- Major (`v2.0.0`): breaking caller-facing changes (renamed/removed
+- Major (`v3.0.0`): breaking caller-facing changes (renamed/removed
   inputs, changed required secrets/permissions, incompatible behavior).
 
 Each released commit should be assigned exactly one of the three bump
-types above. Keep `v1.0.0`, `v1.1.0`, etc. immutable; move the mutable
-`v1` tag to the newest `v1.x.y` release.
+types above. Keep `v2.0.0`, `v2.1.0`, etc. immutable; move the mutable
+`v2` tag to the newest `v2.x.y` release.
 
 Docs-only PRs (for example README clarifications that do not change
 workflow behavior) do not require a SemVer release, do not require a
-new `v1.x.y` tag, and should not move `v1`.
+new `v2.x.y` tag, and should not move `v2`.
 
 Breaking changes (e.g. a renamed input) bump the major version. The
 old major tag stays in place so existing callers keep working until
@@ -717,6 +717,73 @@ Exit code `0` means every workspace compat entry is resolved to its maximum
 allowed version; exit code `1` means at least one entry is outdated, with a
 per-entry message identifying the package, resolved version, and allowed
 ceiling.
+
+## CodeQL
+
+The `CodeQL` workflow runs the GitHub CodeQL Actions-language analysis
+on PRs. It replaces GitHub's
+[default-setup CodeQL](https://docs.github.com/en/code-security/code-scanning/enabling-code-scanning/configuring-default-setup-for-code-scanning)
+with a path-aware advanced-setup reusable that runs only when relevant
+and reports a status check that's reachable for fork PRs from external
+contributors (which default-setup deliberately skips).
+
+### Caller
+
+```yaml
+name: "CodeQL"
+on:
+  pull_request:
+    branches:
+      - "main"
+permissions:
+  contents: "read"
+  security-events: "write"
+  actions: "read"
+jobs:
+  codeql:
+    name: "CodeQL"
+    uses: "ITensor/ITensorActions/.github/workflows/CodeQL.yml@v2"
+```
+
+The caller-side `permissions:` block is mandatory. After the
+org-default flip to read-only `GITHUB_TOKEN`, the reusable's job-level
+`security-events: write` request is capped by the caller's
+workflow-level grant — without an explicit `security-events: write` at
+the caller, CodeQL's SARIF upload fails on every same-repo PR.
+
+The resulting check-run name reported to GitHub is
+`CodeQL / Analyze (actions)`. That's the string a branch ruleset
+should require.
+
+### Behavior
+
+| PR source | Touches `.github/workflows/**`? | `analyze` job | Conclusion |
+|---|---|---|---|
+| Same-repo | No | runs (no-op steps) | `success` |
+| Same-repo | Yes | runs CodeQL | `success` / `failure` |
+| Fork | No | runs (no-op steps) | `success` |
+| Fork | Yes | **skipped** (job-level `if: false`) | **`skipped`** → required check unsatisfied → auto-merge blocked, admin bypass needed |
+
+The `skipped` conclusion (rather than `failure`) on the
+fork-PR-touches-workflows row is intentional: it semantically reads as
+"couldn't run, manual review needed", not "ran and broke", and is the
+right signal for fork PRs whose workflow diffs need human scrutiny
+anyway. The skip blocks auto-merge and forces a maintainer to
+consciously bypass after reviewing the diff (the realistic
+Trivy-attack scenario surface).
+
+### Why advanced setup instead of default-setup
+
+GitHub's CodeQL default-setup skips fork PRs from external
+contributors as a security measure. When the resulting `Analyze
+(actions)` check is required by branch protection, the check never
+reports on those PRs and they can never merge without admin bypass.
+
+External contributors realistically don't change `.github/workflows/`
+— that's infrastructure, not contribution. So scoping the CodeQL run
+to PRs that actually touch workflow files keeps the security signal
+where it matters and removes the merge-blocking on the realistic
+external-contributor case.
 
 ## Registrator
 
