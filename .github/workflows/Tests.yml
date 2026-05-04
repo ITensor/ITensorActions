@@ -118,7 +118,7 @@ jobs:
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: "Install apt packages"
         if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"

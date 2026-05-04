@@ -73,7 +73,7 @@ jobs:
           delete-old-caches: false
 
       - name: Checkout package
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: package
           fetch-depth: 0
@@ -271,7 +271,7 @@ jobs:
 
       - name: Checkout local registry
         if: steps.meta.outputs.route == 'local'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: "${{ inputs.localregistry }}"
           path: registry
