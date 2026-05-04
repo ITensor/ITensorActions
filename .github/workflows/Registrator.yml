@@ -1,4 +1,4 @@
-name: "Reusable Registrator Workflow"
+name: "Registrator"
 
 on:
   workflow_call:
@@ -25,7 +25,7 @@ on:
 
 jobs:
   registrator:
-    name: "Register package version"
+    name: "Registrator"
     runs-on: ubuntu-latest
     if: |
       github.event_name != 'issue_comment' || (

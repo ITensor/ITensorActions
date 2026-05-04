@@ -1,4 +1,4 @@
-name: "Reusable Format Check Comment Workflow"
+name: "FormatCheckComment"
 
 # Comment phase of the format-check pipeline. Triggered by a `workflow_run`
 # event after FormatCheck.yml completes. Runs in the base repo's trusted
@@ -15,13 +15,13 @@ on:
     inputs:
       check-name:
         description: "Name of the parse-phase workflow this comment workflow runs after. Used to filter unrelated workflow_run events."
-        default: "Format Check"
+        default: "FormatCheck"
         required: false
         type: string
 
 jobs:
-  comment:
-    name: "Post format-check comment"
+  format-check-comment:
+    name: "FormatCheckComment"
     # Only run when the parse-phase workflow that triggered us is the
     # expected FormatCheck workflow on a pull_request event.
     if: >-

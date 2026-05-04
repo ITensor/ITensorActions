@@ -1,4 +1,4 @@
-name: "Reusable Documentation Build and Deploy Workflow"
+name: "Documentation"
 
 on:
   workflow_call:
@@ -71,8 +71,8 @@ on:
         required: false
 
 jobs:
-  tests:
-    name: "Build and Deploy Documentation"
+  documentation:
+    name: "Documentation"
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     permissions:

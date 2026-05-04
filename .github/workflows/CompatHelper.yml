@@ -1,4 +1,4 @@
-name: "Reusable CompatHelper Workflow"
+name: "CompatHelper"
 
 on:
   workflow_call:
@@ -16,7 +16,8 @@ on:
         type: string
 
 jobs:
-  CompatHelper:
+  compathelper:
+    name: "CompatHelper"
     runs-on: ubuntu-latest
     permissions:
       contents: write
