@@ -138,6 +138,13 @@ jobs:
             end
           end
           Pkg.develop(Pkg.PackageSpec(path=pwd()))
+          # Explicit instantiate so docs/Manifest.toml resolution failures
+          # (e.g. compat conflicts that would leave packages like Documenter
+          # missing from the depot) surface here rather than silently
+          # passing through to the docs/make.jl step, which then fails with
+          # a confusing "Package X is required but does not seem to be
+          # installed" error several minutes later.
+          Pkg.instantiate()
           retry(Pkg.build)(verbose=true)
           EOF
       - name: "Build and Deploy Documentation"
