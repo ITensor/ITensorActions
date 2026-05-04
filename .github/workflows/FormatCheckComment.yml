@@ -15,7 +15,7 @@ on:
     inputs:
       check-name:
         description: "Name of the parse-phase workflow this comment workflow runs after. Used to filter unrelated workflow_run events."
-        default: "Format Check"
+        default: "FormatCheck"
         required: false
         type: string
 

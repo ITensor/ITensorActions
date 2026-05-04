@@ -7,14 +7,14 @@ Shared workflows for the ITensors Julia packages.
 Callers should pin to a major-version tag rather than to `@main`:
 
 ```yaml
-uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
+uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v2"
 ```
 
 Releases follow `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`, `v1.0.1`,
 `v1.1.0`). A mutable major-version tag (`v1`) is updated to point at
 the latest `v1.x.y` after each release, mirroring the convention
 used by `actions/checkout`, `julia-actions/setup-julia`, and similar
-third-party reusable actions. Callers should reference `@v1` for
+third-party reusable actions. Callers should reference `@v2` for
 "latest in major version 1"; SHA-pinning to a specific `v1.x.y`
 release is also supported when extra rigor is needed.
 
@@ -117,7 +117,7 @@ jobs:
           - ubuntu-latest
           - macOS-latest
           - windows-latest
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v2"
     with:
       group: "${{ matrix.group }}"
       julia-version: "${{ matrix.version }}"
@@ -136,7 +136,7 @@ This is controlled by the `run-all-on-draft` input (default: `false`). To run
 the full matrix even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/Tests.yml@v2"
     with:
       run-all-on-draft: true
       # ...
@@ -207,7 +207,7 @@ concurrency:
 jobs:
   build-and-deploy-docs:
     name: "Documentation"
-    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/Documentation.yml@v2"
     secrets: "inherit"
 ```
 
@@ -248,7 +248,7 @@ Format Check is split into two reusable workflows for security: a
 secrets in scope, and a **comment phase** that runs in the trusted
 base-repo context and posts the format-suggestion comment. Branch
 protection should require the parse phase's check
-(`Format Check / Check Formatting`); the comment workflow exists only to
+(`FormatCheck / FormatCheck`); the comment workflow exists only to
 update the comment.
 
 The split uses GitHub's standard `pull_request:` + `workflow_run:`
@@ -270,7 +270,7 @@ on:
 jobs:
   format-check:
     name: "Format Check"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheck.yml@v2"
     with:
       directory: "." # Customize this to check a specific directory
 ```
@@ -292,7 +292,7 @@ jobs:
     permissions:
       pull-requests: write
       actions: read
-    uses: "ITensor/ITensorActions/.github/workflows/FormatCheckComment.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatCheckComment.yml@v2"
     secrets: inherit
 ```
 
@@ -344,7 +344,7 @@ permissions:
 jobs:
   format-pull-request:
     name: "Format Pull Request"
-    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/FormatPullRequest.yml@v2"
     with:
       directory: "." # Customize this to check a specific directory
       # trigger: "/format" # Customize the on-demand trigger phrase (default: "/format")
@@ -376,7 +376,7 @@ on:
 jobs:
   format-check:
     name: "Literate Check"
-    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/LiterateCheck.yml@v2"
 ```
 
 ### Inputs
@@ -418,7 +418,7 @@ permissions:
 jobs:
   compat-helper:
     name: "CompatHelper"
-    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/CompatHelper.yml@v2"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
     secrets: inherit
@@ -463,7 +463,7 @@ on:
 jobs:
   integration-test:
     name: "IntegrationTest"
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v2"
     secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
@@ -493,7 +493,7 @@ repository root:
 jobs:
   integration-test:
     name: "IntegrationTest"
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v2"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
       pkgs: |
@@ -543,7 +543,7 @@ push events use the PAT to clone; fork PRs do not see the PAT.
 jobs:
   integration-test:
     name: "IntegrationTest"
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v2"
     secrets: "inherit"
     with:
       localregistry: "https://github.com/ITensor/ITensorRegistry.git"
@@ -567,7 +567,7 @@ controlled by the `run-on-draft` input (default: `false`). To run integration
 tests even on draft PRs, set it to `true`:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v2"
     with:
       run-on-draft: true
       # ...
@@ -588,7 +588,7 @@ jobs:
     if: |
       github.event.issue.pull_request &&
       contains(fromJSON('["OWNER", "COLLABORATOR", "MEMBER"]'), github.event.comment.author_association)
-    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@v1
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTestRequest.yml@v2
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -631,7 +631,7 @@ on:
 jobs:
   version-check:
     name: "Version Check"
-    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/VersionCheck.yml@v2"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -675,7 +675,7 @@ on:
 jobs:
   check-compat-bounds:
     name: "Check Compat Bounds"
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v2"
     with:
       localregistry: https://github.com/ITensor/ITensorRegistry.git
 ```
@@ -697,7 +697,7 @@ jobs:
 Example — restrict the check to CompatHelper/Dependabot PRs only:
 
 ```yaml
-    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/CheckCompatBounds.yml@v2"
     with:
       mode: auto
 ```
@@ -771,7 +771,7 @@ permissions:
 
 jobs:
   Register:
-    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/Registrator.yml@v2"
     with:
       localregistry: "ITensor/ITensorRegistry" # omit if package is in General
     secrets: "inherit"
@@ -828,7 +828,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v2"
     secrets: inherit
 ```
 
@@ -878,7 +878,7 @@ env:
 jobs:
   TagBot:
     if: "github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'"
-    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v1"
+    uses: "ITensor/ITensorActions/.github/workflows/TagBot.yml@v2"
     with:
       subdirs: '["NDTensors"]'
     secrets: inherit

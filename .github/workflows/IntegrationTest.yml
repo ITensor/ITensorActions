@@ -210,7 +210,7 @@ jobs:
       - name: "Verify integration tests"
         env:
           PKGS: ${{ inputs.pkgs }}
-          RESULT: ${{ needs.test.result }}
+          RESULT: ${{ needs.integration-test.result }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
