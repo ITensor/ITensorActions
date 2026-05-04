@@ -1,4 +1,4 @@
-name: "Reusable TagBot Workflow"
+name: "TagBot"
 
 on:
   workflow_call:
@@ -13,7 +13,8 @@ on:
         required: false
 
 jobs:
-  TagBotITensorRegistry:
+  tagbot-itensor-registry:
+    name: "TagBot (ITensorRegistry)"
     runs-on: "ubuntu-latest"
     permissions:
       contents: "write"
@@ -22,7 +23,8 @@ jobs:
         with:
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
           registry: "ITensor/ITensorRegistry"
-  TagBotGeneral:
+  tagbot-general:
+    name: "TagBot (General)"
     runs-on: "ubuntu-latest"
     permissions:
       contents: "write"
@@ -30,7 +32,8 @@ jobs:
       - uses: "JuliaRegistries/TagBot@v1"
         with:
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
-  TagBotGeneralSubdirs:
+  tagbot-general-subdirs:
+    name: "TagBot (General subdirs)"
     if: "${{ inputs.subdirs != '[]' }}"
     runs-on: "ubuntu-latest"
     permissions:

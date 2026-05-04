@@ -1,4 +1,4 @@
-name: "Reusable Format Pull Request Workflow"
+name: "FormatPullRequest"
 
 on:
   workflow_call:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   format-pull-request:
-    name: "Format Pull Request"
+    name: "FormatPullRequest"
     runs-on: ubuntu-latest
     if: |
       github.event_name != 'issue_comment' || (

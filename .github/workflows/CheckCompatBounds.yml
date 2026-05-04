@@ -1,4 +1,4 @@
-name: "Reusable Check Compat Bounds Workflow"
+name: "CheckCompatBounds"
 
 on:
   workflow_call:
@@ -51,7 +51,7 @@ on:
 
 jobs:
   check-compat-bounds:
-    name: "Check Compat Bounds"
+    name: "CheckCompatBounds"
     if: "${{ !github.event.pull_request.draft || inputs.run-on-draft }}"
     runs-on: "ubuntu-latest"
     timeout-minutes: ${{ inputs.timeout-minutes }}

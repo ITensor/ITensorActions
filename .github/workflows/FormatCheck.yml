@@ -1,4 +1,4 @@
-name: "Reusable Format Checking Workflow"
+name: "FormatCheck"
 
 # Parse phase of the format-check pipeline. Designed to run on
 # `pull_request:` (no secrets, read-only `GITHUB_TOKEN` for fork PRs)
@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   format-check:
-    name: "Check Formatting"
+    name: "FormatCheck"
     runs-on: ubuntu-latest
     permissions:
       contents: read

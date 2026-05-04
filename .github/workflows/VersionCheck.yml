@@ -1,4 +1,4 @@
-name: "Reusable Version Checking Workflow"
+name: "VersionCheck"
 
 on:
   workflow_call:
@@ -16,7 +16,7 @@ on:
 
 jobs:
   version-check:
-    name: "Check Versions"
+    name: "VersionCheck"
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,4 +1,4 @@
-name: "Reusable Integration Test Request"
+name: "IntegrationTestRequest"
 
 on:
   workflow_call:
@@ -54,7 +54,7 @@ jobs:
           HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-  runtests:
+  run-tests:
     needs: get-pr-comment
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
@@ -64,7 +64,7 @@ jobs:
     secrets: inherit
 
   report:
-    needs: [get-pr-comment, runtests]
+    needs: [get-pr-comment, run-tests]
     if: ${{ always() && needs.get-pr-comment.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -83,7 +83,7 @@ jobs:
       # fork PRs whose private-only matrix would otherwise leave that
       # gate failing.
       - name: Post passing IntegrationTest check
-        if: ${{ needs.runtests.result == 'success' }}
+        if: ${{ needs.run-tests.result == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
