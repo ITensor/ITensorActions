@@ -1,0 +1,79 @@
+name: "CodeQL"
+
+# See the README's `## CodeQL` section for the caller-side template,
+# behavior table, and rationale.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      is_fork: ${{ steps.context.outputs.is_fork }}
+      changed: ${{ steps.changed.outputs.any }}
+    steps:
+      - name: "Determine fork status"
+        id: context
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$HEAD_REPO" ] || [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: "Detect workflow changes"
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Non-PR triggers (e.g. workflow_dispatch) leave both SHAs empty.
+          # Treat as "changed=true" so the analysis runs in those cases.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
+               | grep -q '^\.github/workflows/'; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  analyze:
+    name: "Analyze (actions)"
+    needs: detect
+    # Skip when fork PR touches workflow files. Job-level `if: false`
+    # gives the check a `skipped` conclusion (distinct from `failure`),
+    # which fails required-check satisfaction and prevents auto-merge
+    # from firing. A maintainer must consciously bypass after reviewing
+    # the workflow diff (the realistic Trivy-attack scenario surface).
+    if: ${{ !(needs.detect.outputs.is_fork == 'true' && needs.detect.outputs.changed == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ needs.detect.outputs.changed == 'true' }}
+        uses: actions/checkout@v6
+
+      - if: ${{ needs.detect.outputs.changed == 'true' }}
+        uses: github/codeql-action/init@v3
+        with:
+          languages: actions
+
+      - if: ${{ needs.detect.outputs.changed == 'true' }}
+        uses: github/codeql-action/analyze@v3
+
+      - if: ${{ needs.detect.outputs.changed != 'true' }}
+        run: echo "No workflow files changed; skipping CodeQL Actions analysis."
