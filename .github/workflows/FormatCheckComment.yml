@@ -92,7 +92,7 @@ jobs:
 
       - name: Post or update suggestion comment
         if: steps.meta.outputs.skip == 'false' && steps.meta.outputs.exit_code == '1'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
@@ -102,7 +102,7 @@ jobs:
 
       - name: Clear stale comment when formatting now passes
         if: steps.meta.outputs.skip == 'false' && steps.meta.outputs.exit_code == '0' && steps.find-comment.outputs.comment-id
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           token: ${{ secrets.FORMATPULLREQUEST_PAT || github.token }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
