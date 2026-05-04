@@ -21,6 +21,7 @@ on:
 
 jobs:
   get-pr-comment:
+    name: "Get PR comment"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,6 +56,7 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   run-tests:
+    name: "Run tests"
     needs: get-pr-comment
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
@@ -64,6 +66,7 @@ jobs:
     secrets: inherit
 
   report:
+    name: "Report"
     needs: [get-pr-comment, run-tests]
     if: ${{ always() && needs.get-pr-comment.result == 'success' }}
     runs-on: ubuntu-latest
