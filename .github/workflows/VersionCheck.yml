@@ -38,7 +38,7 @@ jobs:
         if: steps.classify.outputs.substantive == 'true'
         run: git fetch --depth=1 origin "${{ github.base_ref }}"
 
-      - uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         if: steps.classify.outputs.substantive == 'true'
         with:
           version: ${{ inputs.julia-version }}
