@@ -123,7 +123,7 @@ jobs:
       # issue_comment mode: react to the triggering comment
       - name: React to comment
         if: github.event_name == 'issue_comment'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           token: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
           comment-id: ${{ github.event.comment.id }}
