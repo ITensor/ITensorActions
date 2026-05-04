@@ -43,7 +43,7 @@ jobs:
       matrix:
         subdir: "${{ fromJSON(inputs.subdirs) }}"
     steps:
-      - uses: "ITensor/ITensorActions/.github/actions/tag-subdir@main"
+      - uses: "ITensor/ITensorActions/.github/actions/tag-subdir@b8fbbf0f903201a476a9469b4fa58b96845086ef"
         with:
           subdir: "${{ matrix.subdir }}"
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
