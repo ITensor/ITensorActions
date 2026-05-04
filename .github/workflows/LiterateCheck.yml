@@ -56,6 +56,11 @@ jobs:
             end
           end
           Pkg.develop(Pkg.PackageSpec(path=pwd()))
+          # Explicit instantiate so docs/Manifest.toml resolution failures
+          # surface here (not deferred to the make_readme.jl step with a
+          # confusing "Package X is required but does not seem to be
+          # installed" error). Same rationale as Documentation.yml.
+          Pkg.instantiate()
           retry(Pkg.build)(verbose=true)
       - name: "Build README"
         run: julia --project=docs/ docs/make_readme.jl
