@@ -13,6 +13,16 @@ on:
         default: ""
         required: false
         type: string
+      subdir:
+        description: "Subdirectory containing the package's Project.toml. When set, VersionCheck reads `<subdir>/Project.toml` and classify-pr scopes the substantive-PR check to files under `<subdir>/`. Empty (default) reads root Project.toml."
+        default: ""
+        required: false
+        type: string
+      exclude-subdirs:
+        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore."
+        default: ""
+        required: false
+        type: string
 
 jobs:
   version-check:
@@ -27,12 +37,14 @@ jobs:
 
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
         id: classify
+        with:
+          subdir: ${{ inputs.subdir }}
+          exclude-subdirs: ${{ inputs.exclude-subdirs }}
 
       - name: "Skip version check on non-substantive PR"
         if: steps.classify.outputs.substantive != 'true'
         run: |
-          echo "PR classified as non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE)."
-          echo "No version bump is required. Reporting success without running the real check."
+          echo "PR has no substantive changes in scope; no version bump required. Reporting success."
 
       - name: "Fetch base branch"
         if: steps.classify.outputs.substantive == 'true'
@@ -46,26 +58,31 @@ jobs:
       - name: "Check version was bumped"
         if: steps.classify.outputs.substantive == 'true'
         shell: julia --color=yes {0}
+        env:
+          SUBDIR: ${{ inputs.subdir }}
         run: |
           using TOML
 
+          subdir = get(ENV, "SUBDIR", "")
+          project_path = isempty(subdir) ? "Project.toml" : joinpath(subdir, "Project.toml")
+
           base_ref = ENV["GITHUB_BASE_REF"]
           base_project_text = try
-              read(`git show "origin/$base_ref:Project.toml"`, String)
+              read(`git show "origin/$base_ref:$project_path"`, String)
           catch err
-              println("Could not read Project.toml on origin/$base_ref ($err); skipping check.")
+              println("Could not read $project_path on origin/$base_ref ($err); skipping check.")
               exit(0)
           end
           base_project = TOML.parse(base_project_text)
-          current_project = TOML.parse(read("Project.toml", String))
+          current_project = TOML.parse(read(project_path, String))
 
           if !haskey(base_project, "version")
-              println("Base branch Project.toml has no version field; skipping check.")
+              println("Base branch $project_path has no version field; skipping check.")
               exit(0)
           end
           if !haskey(current_project, "version")
               error(
-                  "Project.toml on this branch has no version field, but the base " *
+                  "$project_path on this branch has no version field, but the base " *
                   "branch ($base_ref) does. Restore the version field and bump it."
               )
           end
@@ -75,13 +92,13 @@ jobs:
 
           if current_version > base_version
               println(
-                  "OK: Project.toml version bumped from $base_version " *
+                  "OK: $project_path version bumped from $base_version " *
                   "(origin/$base_ref) to $current_version (PR head)."
               )
           else
               error(
-                  "Project.toml version was not bumped. Current version $current_version " *
+                  "$project_path version was not bumped. Current version $current_version " *
                   "is not greater than the version $base_version on the base branch " *
-                  "($base_ref). Bump the version in Project.toml."
+                  "($base_ref). Bump the version in $project_path."
               )
           end
