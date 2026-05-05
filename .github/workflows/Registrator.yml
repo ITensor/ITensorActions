@@ -18,6 +18,11 @@ on:
         default: "/register"
         required: false
         type: string
+      subdir:
+        description: "Subdirectory containing the package's Project.toml, relative to the repo root. Default empty means register the root package. Set to e.g. 'NDTensors' to register an in-tree subpackage; the workflow then reads `package/<subdir>/Project.toml` and posts `@JuliaRegistrator register subdir=<subdir>` so JuliaRegistrator picks up the sub-package correctly."
+        default: ""
+        required: false
+        type: string
     secrets:
       # Only needed for the local-registry path (checkout + PR). Not needed for General.
       REGISTRATOR_PAT:
@@ -83,6 +88,7 @@ jobs:
         id: meta
         env:
           OLD_REF: ${{ github.event.before }}
+          SUBDIR: ${{ inputs.subdir }}
         shell: julia --color=yes {0}
         run: |
           using TOML
@@ -108,14 +114,17 @@ jobs:
           end
 
           let
-              new = TOML.parsefile("package/Project.toml")
+              subdir = get(ENV, "SUBDIR", "")
+              project_path = isempty(subdir) ? "Project.toml" : joinpath(subdir, "Project.toml")
+
+              new = TOML.parsefile(joinpath("package", project_path))
               name = get(new, "name", "")
               uuid = get(new, "uuid", "")
               newv_str = get(new, "version", "")
 
-              isempty(name) && error("Project.toml is missing name")
-              isempty(uuid) && error("Project.toml is missing uuid")
-              isempty(newv_str) && error("Project.toml is missing version")
+              isempty(name) && error("$project_path is missing name")
+              isempty(uuid) && error("$project_path is missing uuid")
+              isempty(newv_str) && error("$project_path is missing version")
 
               newv = parse_version(newv_str, "new")
               subject = replace(readchomp(`git -C package log -1 --pretty=%s HEAD`), ['\n','\r'] => ' ')
@@ -133,11 +142,11 @@ jobs:
               oldv_str = ""
               if !isempty(old_ref)
                   try
-                      old_toml = readchomp(`git -C package show $old_ref:Project.toml`)
+                      old_toml = readchomp(`git -C package show $old_ref:$project_path`)
                       oldv_str = get(TOML.parse(old_toml), "version", "")
                   catch err
                       # Don't hard-fail on missing old Project.toml; just skip strict validation.
-                      println(stderr, "Warning: could not read Project.toml at ref '$old_ref' (treating as no prior version): $err")
+                      println(stderr, "Warning: could not read $project_path at ref '$old_ref' (treating as no prior version): $err")
                       oldv_str = ""
                   end
               end
@@ -217,9 +226,14 @@ jobs:
           IS_BREAKING: ${{ steps.meta.outputs.is_breaking }}
           SUBJECT: ${{ steps.meta.outputs.subject }}
           NEW_VERSION: ${{ steps.meta.outputs.new_version }}
+          SUBDIR: ${{ inputs.subdir }}
         run: |
           {
-            echo "@JuliaRegistrator register"
+            if [ -n "$SUBDIR" ]; then
+              echo "@JuliaRegistrator register subdir=$SUBDIR"
+            else
+              echo "@JuliaRegistrator register"
+            fi
             if [ "$IS_BREAKING" = "true" ]; then
               echo ""
               echo "Release notes:"
@@ -336,6 +350,8 @@ jobs:
 
       - name: "Update local registry"
         if: steps.meta.outputs.route == 'local'
+        env:
+          SUBDIR: ${{ inputs.subdir }}
         shell: julia --color=yes {0}
         run: |
           import Pkg
@@ -344,7 +360,9 @@ jobs:
                                   uuid="89398ba2-070a-4b16-a995-9893c55d93cf",
                                   version="0.5.7"))
           using LocalRegistry
-          register("./package"; registry="./registry", commit=false, push=false)
+          subdir = get(ENV, "SUBDIR", "")
+          pkg_path = isempty(subdir) ? "./package" : joinpath("./package", subdir)
+          register(pkg_path; registry="./registry", commit=false, push=false)
 
       - name: "Create PR to registry"
         if: steps.meta.outputs.route == 'local'
