@@ -1,12 +1,12 @@
 name: "Classify PR substance"
-description: "Determines whether a PR touches substantive files or only CI/config (workflow-only) files. Outputs substantive=true|false."
+description: "Reports whether a PR makes substantive changes — anything beyond CI/config metadata files (`.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`). Outputs substantive=true|false."
 inputs:
   subdir:
-    description: "Positive scope: when set, a file is substantive iff it lies under `<subdir>/`. Mutually exclusive with `exclude-subdirs`."
+    description: "Restrict the check to changes inside this subdirectory. Files outside `<subdir>/` don't count, and within `<subdir>/` the same metadata files that don't count at the repo root (`.github/`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`) also don't count. Use this for a workflow that's scoped to one in-tree subpackage. Mutually exclusive with `exclude-subdirs`."
     required: false
     default: ""
   exclude-subdirs:
-    description: "Negative scope at root: newline-separated list of sibling subdirectories to exclude. When set (and `subdir` empty), a file is substantive iff it lies outside `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`, AND outside any listed `<sibling>/`."
+    description: "Newline-separated list of sibling subdirectories whose changes don't count. Use this for a root-package workflow in a multi-package repo so that PRs confined to a sibling subpackage are reported non-substantive. The repo-root metadata files (`.github/`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`) also don't count, as usual."
     required: false
     default: ""
 outputs:
@@ -45,11 +45,21 @@ runs:
         printf '  %s\n' $files
         substantive=false
         if [ -n "$SUBDIR" ]; then
-          echo "Positive scope: ${SUBDIR}/"
+          echo "Positive scope: ${SUBDIR}/ (with the usual metadata-file exclusions applied inside)"
           while IFS= read -r file; do
+            # Ignore files outside the scoped subdirectory.
             case "$file" in
-              "$SUBDIR"/*) substantive=true; break ;;
+              "$SUBDIR"/*) ;;
+              *) continue ;;
             esac
+            # Within the subdirectory, apply the same metadata-file
+            # exclusions as at the repo root.
+            rel="${file#"$SUBDIR"/}"
+            case "$rel" in
+              .github/*|.pre-commit-config.yaml|.gitignore|LICENSE) continue ;;
+            esac
+            substantive=true
+            break
           done <<< "$files"
         else
           # Build sibling-exclusion list (one prefix per non-empty line).
