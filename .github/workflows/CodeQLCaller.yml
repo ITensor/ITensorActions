@@ -1,22 +1,12 @@
 name: "CodeQL"
-
-# Caller for this repo's own PRs. The reusable lives at
-# `CodeQL.yml` in this same repo, so this caller has to use a
-# different filename to avoid colliding with it. The workflow's
-# `name:` is still "CodeQL" so the displayed status check matches
-# `CodeQL / Analyze (actions)` — same as every other repo that
-# uses this reusable, and what branch protection rulesets require.
-
 on:
   pull_request:
     branches:
       - "main"
-
 permissions:
   contents: "read"
   security-events: "write"
   actions: "read"
-
 jobs:
   codeql:
     name: "CodeQL"
