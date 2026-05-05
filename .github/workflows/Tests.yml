@@ -72,11 +72,6 @@ on:
         default: ""
         required: false
         type: string
-      extra-dev-paths:
-        description: "Additional local package paths (relative to the repo root) to `Pkg.develop()` into the active project before running tests. Newline-separated list. Useful for repos with in-tree subpackages (e.g. ITensors.jl + NDTensors) where the in-tree dep must shadow any registered version during testing."
-        default: ""
-        required: false
-        type: string
       continue-on-error:
         description: "Prevent the workflow run from failing if/when the job fails"
         required: false
@@ -151,19 +146,6 @@ jobs:
         if: "${{ inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: "Pkg.develop extra paths"
-        if: "${{ inputs.extra-dev-paths != '' }}"
-        shell: julia --color=yes {0}
-        env:
-          EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
-          PROJECT: ${{ inputs.project }}
-        run: |
-          using Pkg
-          dev_paths = filter(!isempty, string.(split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")))
-          project = get(ENV, "PROJECT", "@.")
-          Pkg.activate(project)
-          Pkg.develop([Pkg.PackageSpec(; path) for path in dev_paths])
 
       - uses: julia-actions/julia-buildpkg@v1
         if: "${{ inputs.buildpkg }}"
