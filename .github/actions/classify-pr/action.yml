@@ -1,8 +1,17 @@
 name: "Classify PR substance"
 description: "Determines whether a PR touches substantive files or only CI/config (workflow-only) files. Outputs substantive=true|false."
+inputs:
+  subdir:
+    description: "Positive scope: when set, a file is substantive iff it lies under `<subdir>/`. Mutually exclusive with `exclude-subdirs`."
+    required: false
+    default: ""
+  exclude-subdirs:
+    description: "Negative scope at root: newline-separated list of sibling subdirectories to exclude. When set (and `subdir` empty), a file is substantive iff it lies outside `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`, AND outside any listed `<sibling>/`."
+    required: false
+    default: ""
 outputs:
   substantive:
-    description: "true if the PR touches substantive files; false if all changes are confined to .github/**, .pre-commit-config.yaml, .gitignore, or LICENSE."
+    description: "true if the PR touches substantive files; false otherwise."
     value: ${{ steps.classify.outputs.substantive }}
 runs:
   using: "composite"
@@ -13,8 +22,14 @@ runs:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        SUBDIR: ${{ inputs.subdir }}
+        EXCLUDE_SUBDIRS: ${{ inputs.exclude-subdirs }}
       run: |
         set -euo pipefail
+        if [ -n "$SUBDIR" ] && [ -n "$EXCLUDE_SUBDIRS" ]; then
+          echo "::error::classify-pr: 'subdir' and 'exclude-subdirs' are mutually exclusive."
+          exit 1
+        fi
         if [ -z "${PR_NUMBER:-}" ]; then
           echo "Not a pull_request event; defaulting to substantive=true."
           echo "substantive=true" >> "$GITHUB_OUTPUT"
@@ -29,11 +44,39 @@ runs:
         echo "Changed files:"
         printf '  %s\n' $files
         substantive=false
-        while IFS= read -r file; do
-          case "$file" in
-            .github/*|.pre-commit-config.yaml|.gitignore|LICENSE) ;;
-            *) substantive=true; break ;;
-          esac
-        done <<< "$files"
+        if [ -n "$SUBDIR" ]; then
+          echo "Positive scope: ${SUBDIR}/"
+          while IFS= read -r file; do
+            case "$file" in
+              "$SUBDIR"/*) substantive=true; break ;;
+            esac
+          done <<< "$files"
+        else
+          # Build sibling-exclusion list (one prefix per non-empty line).
+          siblings=()
+          if [ -n "$EXCLUDE_SUBDIRS" ]; then
+            while IFS= read -r s; do
+              [ -z "$s" ] && continue
+              siblings+=("$s")
+            done <<< "$EXCLUDE_SUBDIRS"
+            echo "Root scope, excluding siblings: ${siblings[*]}"
+          fi
+          while IFS= read -r file; do
+            # Always-ignored metadata at root.
+            case "$file" in
+              .github/*|.pre-commit-config.yaml|.gitignore|LICENSE) continue ;;
+            esac
+            # Sibling-subdir exclusion (only when EXCLUDE_SUBDIRS set).
+            in_sibling=false
+            for sib in "${siblings[@]}"; do
+              case "$file" in
+                "$sib"/*) in_sibling=true; break ;;
+              esac
+            done
+            $in_sibling && continue
+            substantive=true
+            break
+          done <<< "$files"
+        fi
         echo "substantive=${substantive}"
         echo "substantive=${substantive}" >> "$GITHUB_OUTPUT"
