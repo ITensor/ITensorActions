@@ -23,7 +23,7 @@ on:
         required: false
         type: string
       subdir:
-        description: "Subdirectory containing the package-under-test's Project.toml, relative to the repo root. Empty (default) means use the repo root. When set (e.g. `NDTensors`), the workflow `Pkg.develop`s from that subdirectory instead, so multi-package repos can run an IntegrationTest matrix against an in-tree subpackage as the package under test."
+        description: "Run the downstream tests against the package in this subdirectory."
         default: ""
         required: false
         type: string
@@ -33,7 +33,7 @@ on:
         required: false
         type: boolean
       run-on-nonsubstantive:
-        description: "When true, run IntegrationTest even on non-substantive PRs (those touching only `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`). Defaults to false so metadata-only changes don't burn CI on downstream tests they can't possibly affect."
+        description: "When true, run IntegrationTest even on PRs that only touch `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, or `LICENSE`."
         default: false
         required: false
         type: boolean
