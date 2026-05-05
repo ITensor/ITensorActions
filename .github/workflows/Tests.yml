@@ -133,7 +133,7 @@ jobs:
     outputs:
       substantive: ${{ steps.classify.outputs.substantive }}
     steps:
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
         id: classify
         with:
           subdir: ${{ inputs.subdir }}
