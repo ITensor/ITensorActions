@@ -140,8 +140,6 @@ jobs:
               end
           end
 
-          all_pass = true
-          for p in projects
-              all_pass &= check_project(p, subdirs, base_ref, changed_files)
-          end
-          all_pass || error("VersionCheck failed; see errors above.")
+          # Evaluate every project so all errors surface before failing.
+          results = [check_project(p, subdirs, base_ref, changed_files) for p in projects]
+          all(results) || error("VersionCheck failed; see errors above.")
