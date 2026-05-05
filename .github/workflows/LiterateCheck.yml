@@ -1,4 +1,4 @@
-name: "Reusable Readme Generation Checking Workflow"
+name: "LiterateCheck"
 
 on:
   workflow_call:
@@ -36,7 +36,7 @@ jobs:
       - uses: julia-actions/setup-julia@v3
         with:
           version: "${{ inputs.julia-version }}"
-      - name: Setup project
+      - name: "Setup project"
         shell: julia --project=docs --color=yes {0}
         env:
           LOCALREGISTRY: ${{ inputs.localregistry }}
@@ -64,7 +64,7 @@ jobs:
           retry(Pkg.build)(verbose=true)
       - name: "Build README"
         run: julia --project=docs/ docs/make_readme.jl
-      - name: Check if docs need to be updated
+      - name: "Check if docs need to be updated"
         id: check-literate
         run: |
           MODIFIED_FILES="$(git diff --name-only README.md)"

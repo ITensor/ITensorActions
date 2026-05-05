@@ -21,7 +21,7 @@ on:
 
 jobs:
   get-pr-comment:
-    name: "Get PR comment"
+    name: "Get PR Comment"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,7 +30,7 @@ jobs:
       pkgs: ${{ steps.extract.outputs.pkgs }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
-      - name: Extract command arguments
+      - name: "Extract command arguments"
         id: extract
         env:
           COMMENT: ${{ github.event.comment.body }}
@@ -45,7 +45,7 @@ jobs:
           # workflow's `pkgs` input. `jq` handles any escaping for us.
           PKGS=$(jq -nc --arg pkg "$PKG" '[$pkg]')
           echo "pkgs=$PKGS" >> "$GITHUB_OUTPUT"
-      - name: Resolve PR head SHA
+      - name: "Resolve PR head SHA"
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,7 +56,7 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   run-tests:
-    name: "Run tests"
+    name: "Run Tests"
     needs: get-pr-comment
     uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
     with:
@@ -74,7 +74,7 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - name: React to triggering comment
+      - name: "React to triggering comment"
         uses: peter-evans/create-or-update-comment@v5
         with:
           token: ${{ secrets.INTEGRATIONTEST_PAT || github.token }}
@@ -85,7 +85,7 @@ jobs:
       # successful `/integrationtest` clear the IntegrationTest gate on
       # fork PRs whose private-only matrix would otherwise leave that
       # gate failing.
-      - name: Post passing IntegrationTest check
+      - name: "Post passing IntegrationTest check"
         if: ${{ needs.run-tests.result == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}

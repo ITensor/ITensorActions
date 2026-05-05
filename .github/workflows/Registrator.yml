@@ -48,7 +48,7 @@ jobs:
       TARGET_SHA: ${{ (github.event.pull_request && github.event.pull_request.merged && github.event.pull_request.merge_commit_sha) || (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}
 
     steps:
-      - name: Get target SHA from comment
+      - name: "Get target SHA from comment"
         if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,14 +72,14 @@ jobs:
         with:
           delete-old-caches: false
 
-      - name: Checkout package
+      - name: "Checkout package"
         uses: actions/checkout@v6
         with:
           path: package
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
 
-      - name: Decide route (General vs local) + validate version bump
+      - name: "Decide route (General vs local) + validate version bump"
         id: meta
         env:
           OLD_REF: ${{ github.event.before }}
@@ -200,7 +200,7 @@ jobs:
               end
           end
 
-      - name: Summary (skipped)
+      - name: "Summary (skipped)"
         if: steps.meta.outputs.route == 'none'
         run: |
           {
@@ -210,7 +210,7 @@ jobs:
 
       # ---- General registry path ----
 
-      - name: Compose Registrator commit comment
+      - name: "Compose Registrator commit comment"
         if: steps.meta.outputs.route == 'general'
         shell: bash
         env:
@@ -227,7 +227,7 @@ jobs:
             fi
           } > registrator-comment.md
 
-      - name: Trigger Registrator (General)
+      - name: "Trigger Registrator (General)"
         if: steps.meta.outputs.route == 'general'
         id: cc
         uses: peter-evans/commit-comment@v4
@@ -236,7 +236,7 @@ jobs:
           sha: ${{ env.TARGET_SHA }}
           body-path: registrator-comment.md
 
-      - name: Summary (General)
+      - name: "Summary (General)"
         if: steps.meta.outputs.route == 'general'
         run: |
           {
@@ -252,13 +252,13 @@ jobs:
 
       # ---- Local registry path ----
 
-      - name: Validate local registry input
+      - name: "Validate local registry input"
         if: steps.meta.outputs.route == 'local' && inputs.localregistry == ''
         run: |
           echo "inputs.localregistry is required when the package is not in General." >&2
           exit 1
 
-      - name: Validate REGISTRATOR_PAT (local registry)
+      - name: "Validate REGISTRATOR_PAT (local registry)"
         if: steps.meta.outputs.route == 'local'
         env:
           REGISTRATOR_PAT: ${{ secrets.REGISTRATOR_PAT }}
@@ -269,7 +269,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout local registry
+      - name: "Checkout local registry"
         if: steps.meta.outputs.route == 'local'
         uses: actions/checkout@v6
         with:
@@ -281,7 +281,7 @@ jobs:
       # both match the authenticating identity. Without this, peter-evans
       # below defaults the author to the workflow-trigger commit author and
       # the committer to github-actions[bot].
-      - name: Detect token owner
+      - name: "Detect token owner"
         if: steps.meta.outputs.route == 'local'
         id: token-owner
         env:
@@ -301,7 +301,7 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "email=$email" >> "$GITHUB_OUTPUT"
 
-      - name: Compose PR metadata (local registry)
+      - name: "Compose PR metadata (local registry)"
         if: steps.meta.outputs.route == 'local'
         id: local_pr
         env:
@@ -334,7 +334,7 @@ jobs:
               println(io, "EOF")
           end
 
-      - name: Update local registry
+      - name: "Update local registry"
         if: steps.meta.outputs.route == 'local'
         shell: julia --color=yes {0}
         run: |
@@ -346,7 +346,7 @@ jobs:
           using LocalRegistry
           register("./package"; registry="./registry", commit=false, push=false)
 
-      - name: Create PR to registry
+      - name: "Create PR to registry"
         if: steps.meta.outputs.route == 'local'
         id: cpr
         uses: peter-evans/create-pull-request@v8
@@ -360,7 +360,7 @@ jobs:
           author: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
           committer: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
 
-      - name: Summary (Local registry)
+      - name: "Summary (local registry)"
         if: steps.meta.outputs.route == 'local'
         run: |
           {
@@ -376,7 +376,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: React to comment
+      - name: "React to comment"
         if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ secrets.REGISTRATOR_PAT || secrets.GITHUB_TOKEN }}

@@ -33,7 +33,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Get PR branch
+      - name: "Get PR branch"
         if: github.event_name == 'issue_comment'
         id: pr
         env:
@@ -55,7 +55,7 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
-      - name: Install ITensorFormatter
+      - name: "Install ITensorFormatter"
         run: |
           julia -e '
             using Pkg
@@ -65,14 +65,14 @@ jobs:
           '
           echo "$HOME/.julia/bin" >> $GITHUB_PATH
 
-      - name: Run ITensorFormatter
+      - name: "Run ITensorFormatter"
         env:
           DIRECTORY: ${{ inputs.directory }}
         run: |
           itpkgfmt "$DIRECTORY"
         continue-on-error: true
 
-      - name: Detect formatting changes
+      - name: "Detect formatting changes"
         id: changes
         shell: bash
         run: |
@@ -88,7 +88,7 @@ jobs:
       # attribution all match the identity the token authenticates as.
       # Falls back to github-actions[bot] when FORMATPULLREQUEST_PAT is
       # unset (forks, etc.).
-      - name: Detect token owner
+      - name: "Detect token owner"
         id: token-owner
         env:
           GH_TOKEN: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
@@ -108,7 +108,7 @@ jobs:
           echo "email=$email" >> "$GITHUB_OUTPUT"
 
       # issue_comment mode: commit directly to the PR branch
-      - name: Commit and push changes
+      - name: "Commit and push changes"
         if: github.event_name == 'issue_comment' && steps.changes.outputs.changes == 'true'
         env:
           GIT_NAME: ${{ steps.token-owner.outputs.name }}
@@ -121,7 +121,7 @@ jobs:
           git push
 
       # issue_comment mode: react to the triggering comment
-      - name: React to comment
+      - name: "React to comment"
         if: github.event_name == 'issue_comment'
         uses: peter-evans/create-or-update-comment@v5
         with:
@@ -130,7 +130,7 @@ jobs:
           reactions: '+1'
 
       # schedule/dispatch mode: bump version and open a new PR
-      - name: Bump patch version
+      - name: "Bump patch version"
         if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         shell: julia --color=yes {0}
         run: |
@@ -140,12 +140,12 @@ jobs:
           project.version = Base.nextpatch(project.version)
           Pkg.Types.write_project(project, project_file)
 
-      - name: Stage changes (including new files)
+      - name: "Stage changes (including new files)"
         if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         shell: bash
         run: git add -A
 
-      - name: Create Pull Request
+      - name: "Create pull request"
         if: github.event_name != 'issue_comment' && steps.changes.outputs.changes == 'true'
         id: cpr
         uses: peter-evans/create-pull-request@v8
@@ -158,7 +158,7 @@ jobs:
           author: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
           committer: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
 
-      - name: Check outputs
+      - name: "Check outputs"
         if: github.event_name != 'issue_comment'
         run: |
           echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"

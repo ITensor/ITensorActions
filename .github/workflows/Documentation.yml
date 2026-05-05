@@ -107,7 +107,7 @@ jobs:
         run: |
           printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
 
-      - name: Setup project
+      - name: "Setup project"
         shell: "bash"
         env:
           LOCALREGISTRY: ${{ inputs.localregistry }}
@@ -147,7 +147,7 @@ jobs:
           Pkg.instantiate()
           retry(Pkg.build)(verbose=true)
           EOF
-      - name: "Build and Deploy Documentation"
+      - name: "Build and deploy documentation"
         env:
           GITHUB_TOKEN: ${{ inputs.github-token || secrets.GITHUB_TOKEN }}
           JULIA_DEBUG: ${{ inputs.debug-documenter && 'Documenter' || '' }}
@@ -161,7 +161,7 @@ jobs:
         with:
           directories: "${{ inputs.coverage-directories }}"
 
-      - name: "Report Coverage with Codecov"
+      - name: "Report coverage with Codecov"
         uses: codecov/codecov-action@v6
         if: "${{ inputs.coverage }}"
         with:
