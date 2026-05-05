@@ -23,7 +23,12 @@ on:
         required: false
         type: string
       subdir:
-        description: "Run the downstream tests against the package in this subdirectory."
+        description: "Run the downstream tests against the package in this subdirectory. Also scopes the substantive-PR check to files under `<subdir>/`."
+        default: ""
+        required: false
+        type: string
+      exclude-subdirs:
+        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore."
         default: ""
         required: false
         type: string
@@ -58,6 +63,9 @@ jobs:
     steps:
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
         id: classify
+        with:
+          subdir: ${{ inputs.subdir }}
+          exclude-subdirs: ${{ inputs.exclude-subdirs }}
 
   integration-test:
     name: "${{ matrix.pkg }}"
