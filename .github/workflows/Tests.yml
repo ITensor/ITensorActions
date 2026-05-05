@@ -67,6 +67,11 @@ on:
         default: "yes"
         required: false
         type: string
+      test-args:
+        description: "Newline-separated list of arguments passed to `Pkg.test(; test_args=...)`. Surfaces julia-actions/julia-runtest's `test_args` input. Useful when `runtests.jl` selects test groups via ARGS rather than the GROUP env-var."
+        default: ""
+        required: false
+        type: string
       continue-on-error:
         description: "Prevent the workflow run from failing if/when the job fails"
         required: false
@@ -162,6 +167,7 @@ jobs:
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
           prefix: "${{ inputs.test-prefix }}"
+          test_args: "${{ inputs.test-args }}"
           # On LTS, accept that newer dep versions may not be reachable —
           # let Pkg resolve to whatever satisfies both the workspace compat
           # and transitive constraints. `auto` (the default) would otherwise
