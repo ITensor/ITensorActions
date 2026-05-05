@@ -9,8 +9,13 @@ on:
         required: false
         type: string
       project:
-        description: "The value is passed to Julia's `--project` flag during buildpkg."
+        description: "Deprecated alias for `subdir`. Value passed to Julia's `--project` flag during buildpkg. When `subdir` is set, it takes precedence."
         default: '@.'
+        required: false
+        type: string
+      subdir:
+        description: "Subdirectory containing the package's Project.toml. When set, both buildpkg's `--project` and the check-compat-bounds workspace-root resolve to `<subdir>`. Empty (default) uses repo root."
+        default: ""
         required: false
         type: string
       cache:
@@ -74,10 +79,10 @@ jobs:
         if: "${{ inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
-          project: "${{ inputs.project }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
 
       - name: "Check compat upper bounds"
         uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
         with:
-          workspace-root: "${{ inputs.workspace-root }}"
+          workspace-root: "${{ inputs.subdir != '' && inputs.subdir || inputs.workspace-root }}"
           mode: "${{ inputs.mode }}"
