@@ -73,12 +73,7 @@ on:
         required: false
         type: string
       subdir:
-        description: "Subdirectory containing the package's Project.toml. When set, Julia activates `<subdir>` and classify-pr scopes the substantive-PR check to files under `<subdir>/`. Empty (default) activates the repo root."
-        default: ""
-        required: false
-        type: string
-      exclude-subdirs:
-        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore. Skip Tests when changes are confined to `.github/**`/`.pre-commit-config.yaml`/`.gitignore`/`LICENSE` plus any of the listed siblings."
+        description: "Subdirectory containing the package's Project.toml. When set, Julia activates `<subdir>` for buildpkg and runtest. Empty (default) activates the repo root."
         default: ""
         required: false
         type: string
@@ -121,38 +116,14 @@ on:
         required: true
 
 jobs:
-  # Classify PR substance up front when per-package scoping is requested
-  # (`subdir` or `exclude-subdirs` set). Tests reads the result to skip
-  # PRs whose substantive changes are outside this package's scope. When
-  # neither input is set the classify-pr action runs in its global mode
-  # but Tests ignores its result, preserving today's "run on every PR"
-  # behavior for existing single-package consumers.
-  classify:
-    name: "Classify PR substance"
-    runs-on: ubuntu-latest
-    outputs:
-      substantive: ${{ steps.classify.outputs.substantive }}
-    steps:
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
-        id: classify
-        with:
-          subdir: ${{ inputs.subdir }}
-          exclude-subdirs: ${{ inputs.exclude-subdirs }}
-
   tests:
     name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
-    needs: classify
     permissions:
       contents: read
-    if: |
-      (
-        !github.event.pull_request.draft
-        || inputs.run-all-on-draft
-        || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
-      ) && (
-        (inputs.subdir == '' && inputs.exclude-subdirs == '')
-        || needs.classify.outputs.substantive == 'true'
-      )
+    if: >-
+      !github.event.pull_request.draft
+      || inputs.run-all-on-draft
+      || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
