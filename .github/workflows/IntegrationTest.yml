@@ -34,7 +34,7 @@ on:
 
 jobs:
   integration-test:
-    name: ${{ matrix.pkg }}
+    name: "${{ matrix.pkg }}"
     # Skip the matrix-driven leg entirely when `pkgs` is empty. Without this
     # guard, GitHub Actions reports an empty-matrix job as `failure`, which
     # propagates to the run's overall conclusion even though the aggregating
@@ -106,7 +106,7 @@ jobs:
         if: steps.gate.outputs.skip == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: integration-test-skip-${{ steps.skip_artifact.outputs.key }}
+          name: "integration-test-skip-${{ steps.skip_artifact.outputs.key }}"
           path: ${{ steps.skip_artifact.outputs.path }}
       - uses: actions/checkout@v6
         if: steps.gate.outputs.skip != 'true'
@@ -128,7 +128,7 @@ jobs:
               git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
             fi
           fi
-      - name: Run the downstream tests
+      - name: "Run the downstream tests"
         if: steps.gate.outputs.skip != 'true'
         shell: julia --color=yes --project=downstream {0}
         env:

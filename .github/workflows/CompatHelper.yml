@@ -23,11 +23,11 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Check if Julia is already available in the PATH
+      - name: "Check if Julia is already available in the PATH"
         id: julia_in_path
         run: which julia
         continue-on-error: true
-      - name: Install Julia, but only if it is not already available in the PATH
+      - name: "Install Julia, but only if it is not already available in the PATH"
         uses: julia-actions/setup-julia@v3
         with:
           version: "${{ inputs.julia-version }}"

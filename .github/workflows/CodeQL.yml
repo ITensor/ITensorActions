@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   detect:
+    name: "Detect"
     runs-on: ubuntu-latest
     outputs:
       is_fork: ${{ steps.context.outputs.is_fork }}

@@ -33,7 +33,7 @@ jobs:
         with:
           token: "${{ secrets.TAGBOT_PAT || github.token }}"
   tagbot-general-subdirs:
-    name: "TagBot (General subdirs)"
+    name: "TagBot (General Subdirs)"
     if: "${{ inputs.subdirs != '[]' }}"
     runs-on: "ubuntu-latest"
     permissions:
