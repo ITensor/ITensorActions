@@ -130,9 +130,6 @@ jobs:
   classify:
     name: "Classify PR substance"
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     outputs:
       substantive: ${{ steps.classify.outputs.substantive }}
     steps:
