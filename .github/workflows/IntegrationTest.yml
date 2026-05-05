@@ -32,14 +32,36 @@ on:
         default: false
         required: false
         type: boolean
+      run-on-nonsubstantive:
+        description: "When true, run IntegrationTest even on non-substantive PRs (those touching only `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`). Defaults to false so metadata-only changes don't burn CI on downstream tests they can't possibly affect."
+        default: false
+        required: false
+        type: boolean
     secrets:
       INTEGRATIONTEST_PAT:
         description: "GitHub PAT for cloning private repositories via HTTPS."
         required: false
 
 jobs:
+  # Classify PR substance up front so the matrix and gate jobs can both
+  # gate on it. Non-substantive PRs (touching only `.github/**`,
+  # `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`) skip the matrix
+  # entirely by default; the gate then short-circuits to success.
+  classify:
+    name: "Classify PR substance"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      substantive: ${{ steps.classify.outputs.substantive }}
+    steps:
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+        id: classify
+
   integration-test:
     name: "${{ matrix.pkg }}"
+    needs: classify
     # Skip the matrix-driven leg entirely when `pkgs` is empty. Without this
     # guard, GitHub Actions reports an empty-matrix job as `failure`, which
     # propagates to the run's overall conclusion even though the aggregating
@@ -48,7 +70,8 @@ jobs:
     # the check is robust against whitespace / block-scalar style.
     if: |
       fromJSON(inputs.pkgs)[0] != null &&
-      (!github.event.pull_request.draft || inputs.run-on-draft)
+      (!github.event.pull_request.draft || inputs.run-on-draft) &&
+      (needs.classify.outputs.substantive == 'true' || inputs.run-on-nonsubstantive)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -200,7 +223,7 @@ jobs:
   # posts a passing check with the same name to satisfy branch protection.
   gate:
     name: "IntegrationTest"
-    needs: integration-test
+    needs: [classify, integration-test]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -220,8 +243,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
+          SUBSTANTIVE: ${{ needs.classify.outputs.substantive }}
+          RUN_ON_NONSUBSTANTIVE: ${{ inputs.run-on-nonsubstantive }}
         run: |
-          echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME"
+          echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME substantive=$SUBSTANTIVE"
+          if [ "$SUBSTANTIVE" != "true" ] && [ "$RUN_ON_NONSUBSTANTIVE" != "true" ]; then
+            echo "PR is non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE); IntegrationTest skipped without running. Set inputs.run-on-nonsubstantive=true on the caller to override."
+            exit 0
+          fi
           pkg_count=$(printf '%s' "$PKGS" | jq 'length')
           if [ "$pkg_count" -eq 0 ]; then
             echo "No downstream integration tests configured; passing."
