@@ -12,6 +12,11 @@ on:
         description: "Architecture of Julia to be used"
         required: false
         type: string
+      project:
+        description: "Deprecated alias for `subdir`. Value passed to Julia's `--project` flag. Set `subdir` instead. Will be removed in a future major release."
+        default: "@."
+        required: false
+        type: string
       group:
         description: "The 'GROUP' of tests that need to be run. This will requires an ENV `GROUP` to be (conditionally) defined within your package tests as well to selectively run groups of tests"
         default: ""
@@ -183,7 +188,7 @@ jobs:
         if: "${{ inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
-          project: "${{ inputs.subdir != '' && inputs.subdir || '@.' }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
 
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"
@@ -196,7 +201,7 @@ jobs:
       - name: "Run tests ${{ inputs.self-hosted && '' || format('on {0}', inputs.os) }} with Julia v${{ inputs.julia-version }}"
         uses: julia-actions/julia-runtest@v1
         with:
-          project: "${{ inputs.subdir != '' && inputs.subdir || '@.' }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
           prefix: "${{ inputs.test-prefix }}"
