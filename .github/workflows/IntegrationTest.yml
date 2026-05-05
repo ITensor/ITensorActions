@@ -33,7 +33,7 @@ on:
         required: false
         type: boolean
       run-on-nonsubstantive:
-        description: "When true, run IntegrationTest even on PRs that only touch `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, or `LICENSE`."
+        description: "Defaults to false so metadata-only changes don't trigger downstream tests."
         default: false
         required: false
         type: boolean
