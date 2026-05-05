@@ -22,11 +22,6 @@ on:
         required: false
         description: 'Add local registries hosted on GitHub. Specified by providing the url (https/ssh) to the repositories as a newline (\n) seperated list. User is responsible for setting up the necessary SSH-Keys to access the repositories if necessary.'
         default: ''
-      extra-dev-paths:
-        description: "Additional local package paths (relative to the repo root) to develop alongside the repository root before the docs build. Newline-separated list. Useful for repos with in-tree subpackages (e.g. ITensors.jl + NDTensors)."
-        default: ""
-        required: false
-        type: string
       self-hosted:
         description: "Run the job needs on a self hosted machine"
         default: false
@@ -116,7 +111,6 @@ jobs:
         shell: "bash"
         env:
           LOCALREGISTRY: ${{ inputs.localregistry }}
-          EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
         # `doc-prefix` is rendered directly into the script body so that any
         # shell quoting in the caller's value (e.g. the single-quoted server
         # args of `xvfb-run -a -s '-screen 0 1024x768x24'`) is parsed by the
@@ -143,9 +137,7 @@ jobs:
               Pkg.Registry.add(Pkg.RegistrySpec(; url=repo_url))
             end
           end
-          dev_paths = [pwd(), split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
-          filter!(!isempty, dev_paths)
-          Pkg.develop([Pkg.PackageSpec(; path) for path in dev_paths])
+          Pkg.develop(Pkg.PackageSpec(path=pwd()))
           # Explicit instantiate so docs/Manifest.toml resolution failures
           # (e.g. compat conflicts that would leave packages like Documenter
           # missing from the depot) surface here rather than silently
