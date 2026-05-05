@@ -157,10 +157,12 @@ jobs:
         shell: julia --color=yes {0}
         env:
           EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
+          PROJECT: ${{ inputs.project }}
         run: |
           using Pkg
           dev_paths = filter(!isempty, string.(split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")))
-          Pkg.activate(".")
+          project = get(ENV, "PROJECT", "@.")
+          Pkg.activate(project)
           Pkg.develop([Pkg.PackageSpec(; path) for path in dev_paths])
 
       - uses: julia-actions/julia-buildpkg@v1

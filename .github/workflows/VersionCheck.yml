@@ -13,6 +13,11 @@ on:
         default: ""
         required: false
         type: string
+      subdirs:
+        description: "Newline-separated list of subdirectories that contain in-tree subpackages with their own Project.toml. When set, each subdir's Project.toml is checked for a version bump independently of the root Project.toml. Each project's check fires only if the PR has substantive changes inside that project's scope: a file in `<subdir>/**` for a named subdir, or a file outside (`.github/**`, `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`, and any named subdir) for the root."
+        default: ""
+        required: false
+        type: string
 
 jobs:
   version-check:
@@ -25,63 +30,118 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
-        id: classify
-
-      - name: "Skip version check on non-substantive PR"
-        if: steps.classify.outputs.substantive != 'true'
-        run: |
-          echo "PR classified as non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE)."
-          echo "No version bump is required. Reporting success without running the real check."
-
       - name: "Fetch base branch"
-        if: steps.classify.outputs.substantive == 'true'
+        if: github.event_name == 'pull_request'
         run: git fetch --depth=1 origin "${{ github.base_ref }}"
 
       - uses: julia-actions/setup-julia@v3
-        if: steps.classify.outputs.substantive == 'true'
+        if: github.event_name == 'pull_request'
         with:
           version: ${{ inputs.julia-version }}
 
-      - name: "Check version was bumped"
-        if: steps.classify.outputs.substantive == 'true'
+      - name: "Check version bumps per project"
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          SUBDIRS: ${{ inputs.subdirs }}
         shell: julia --color=yes {0}
         run: |
           using TOML
 
-          base_ref = ENV["GITHUB_BASE_REF"]
-          base_project_text = try
-              read(`git show "origin/$base_ref:Project.toml"`, String)
-          catch err
-              println("Could not read Project.toml on origin/$base_ref ($err); skipping check.")
-              exit(0)
-          end
-          base_project = TOML.parse(base_project_text)
-          current_project = TOML.parse(read("Project.toml", String))
+          # Substantive-file rules: at the repo root, ignore CI/config
+          # metadata files. Inside a named subdir, every change counts.
+          # Per-subdir classification means each project (root + each
+          # named subdir) gets its own scope and is checked
+          # independently — root bump required only when files outside
+          # the metadata set AND outside any named subdir change; named
+          # subdir bump required only when files inside that subdir
+          # change.
+          const IGNORE_AT_ROOT = (".github/", ".pre-commit-config.yaml", ".gitignore", "LICENSE")
 
-          if !haskey(base_project, "version")
-              println("Base branch Project.toml has no version field; skipping check.")
-              exit(0)
-          end
-          if !haskey(current_project, "version")
-              error(
-                  "Project.toml on this branch has no version field, but the base " *
-                  "branch ($base_ref) does. Restore the version field and bump it."
-              )
+          subdirs = filter(!isempty, string.(split(get(ENV, "SUBDIRS", ""), "\n")))
+          projects = vcat([""], subdirs)
+
+          base_ref = ENV["BASE_REF"]
+          repo = ENV["REPO"]
+          pr_number = ENV["PR_NUMBER"]
+
+          files_text = read(`gh api --paginate "repos/$repo/pulls/$pr_number/files" --jq ".[].filename"`, String)
+          changed_files = filter(!isempty, string.(split(strip(files_text), '\n')))
+          println("Changed files in PR #$pr_number:")
+          for f in changed_files
+              println("  $f")
           end
 
-          base_version = VersionNumber(base_project["version"])
-          current_version = VersionNumber(current_project["version"])
-
-          if current_version > base_version
-              println(
-                  "OK: Project.toml version bumped from $base_version " *
-                  "(origin/$base_ref) to $current_version (PR head)."
-              )
-          else
-              error(
-                  "Project.toml version was not bumped. Current version $current_version " *
-                  "is not greater than the version $base_version on the base branch " *
-                  "($base_ref). Bump the version in Project.toml."
-              )
+          function in_scope(file, project, all_subdirs)
+              if isempty(project)
+                  any(startswith(file, p) || file == p for p in IGNORE_AT_ROOT) && return false
+                  any(startswith(file, sd * "/") for sd in all_subdirs) && return false
+                  return true
+              else
+                  return startswith(file, project * "/")
+              end
           end
+
+          function project_path(project)
+              isempty(project) ? "Project.toml" : joinpath(project, "Project.toml")
+          end
+
+          function check_project(project, all_subdirs, base_ref, files)
+              path = project_path(project)
+              label = isempty(project) ? "root" : project
+
+              substantive = filter(f -> in_scope(f, project, all_subdirs), files)
+              if isempty(substantive)
+                  println("$label: no substantive changes; skipping version-bump check.")
+                  return true
+              end
+
+              println("$label: substantive files changed:")
+              for f in substantive
+                  println("  $f")
+              end
+
+              base_text = try
+                  read(`git show "origin/$base_ref:$path"`, String)
+              catch err
+                  println("$label: could not read $path on origin/$base_ref ($err); skipping check.")
+                  return true
+              end
+
+              if !isfile(path)
+                  println("$label: $path is missing in PR head; skipping check.")
+                  return true
+              end
+
+              base_proj = TOML.parse(base_text)
+              current_proj = TOML.parse(read(path, String))
+
+              if !haskey(base_proj, "version")
+                  println("$label: base $path has no version field; skipping check.")
+                  return true
+              end
+              if !haskey(current_proj, "version")
+                  println(stderr, "ERROR: $label: $path on PR head has no version field, but base does. Restore the version and bump it.")
+                  return false
+              end
+
+              base_v = VersionNumber(base_proj["version"])
+              current_v = VersionNumber(current_proj["version"])
+
+              if current_v > base_v
+                  println("$label: $path bumped from $base_v to $current_v. OK.")
+                  return true
+              else
+                  println(stderr, "ERROR: $label has substantive changes but $path version was not bumped (current $current_v not > base $base_v).")
+                  return false
+              end
+          end
+
+          all_pass = true
+          for p in projects
+              all_pass &= check_project(p, subdirs, base_ref, changed_files)
+          end
+          all_pass || error("VersionCheck failed; see errors above.")
