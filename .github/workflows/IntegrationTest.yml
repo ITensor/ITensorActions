@@ -22,6 +22,11 @@ on:
         default: ""
         required: false
         type: string
+      subdir:
+        description: "Subdirectory containing the package-under-test's Project.toml, relative to the repo root. Empty (default) means use the repo root. When set (e.g. `NDTensors`), the workflow `Pkg.develop`s from that subdirectory instead, so multi-package repos can run an IntegrationTest matrix against an in-tree subpackage as the package under test."
+        default: ""
+        required: false
+        type: string
       run-on-draft:
         description: "When true, run integration tests even on draft PRs"
         default: false
@@ -135,6 +140,7 @@ jobs:
           PKG: ${{ matrix.pkg }}
           LOCALREGISTRY: ${{ inputs.localregistry }}
           EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
+          PKG_DIR: ${{ inputs.subdir || '.' }}
           JULIA_PKG_SERVER_REGISTRY_PREFERENCE: eager
         run: |
           using Pkg
@@ -148,7 +154,7 @@ jobs:
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
-          dev_paths = [".", split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
+          dev_paths = [get(ENV, "PKG_DIR", "."), split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
           filter!(!isempty, dev_paths)
           dev_specs = [PackageSpec(; path) for path in dev_paths]
           pkg = get(ENV, "PKG", "")
