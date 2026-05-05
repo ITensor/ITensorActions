@@ -12,11 +12,6 @@ on:
         description: "Architecture of Julia to be used"
         required: false
         type: string
-      project:
-        description: "The value is passed to Julia's `--project` flag"
-        default: '@.'
-        required: false
-        type: string
       group:
         description: "The 'GROUP' of tests that need to be run. This will requires an ENV `GROUP` to be (conditionally) defined within your package tests as well to selectively run groups of tests"
         default: ""
@@ -72,6 +67,16 @@ on:
         default: ""
         required: false
         type: string
+      subdir:
+        description: "Subdirectory containing the package's Project.toml. When set, Julia activates `<subdir>` and classify-pr scopes the substantive-PR check to files under `<subdir>/`. Empty (default) activates the repo root."
+        default: ""
+        required: false
+        type: string
+      exclude-subdirs:
+        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore. Skip Tests when changes are confined to `.github/**`/`.pre-commit-config.yaml`/`.gitignore`/`LICENSE` plus any of the listed siblings."
+        default: ""
+        required: false
+        type: string
       continue-on-error:
         description: "Prevent the workflow run from failing if/when the job fails"
         required: false
@@ -111,14 +116,41 @@ on:
         required: true
 
 jobs:
-  tests:
-    name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
+  # Classify PR substance up front when per-package scoping is requested
+  # (`subdir` or `exclude-subdirs` set). Tests reads the result to skip
+  # PRs whose substantive changes are outside this package's scope. When
+  # neither input is set the classify-pr action runs in its global mode
+  # but Tests ignores its result, preserving today's "run on every PR"
+  # behavior for existing single-package consumers.
+  classify:
+    name: "Classify PR substance"
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: >-
-      !github.event.pull_request.draft
-      || inputs.run-all-on-draft
-      || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
+      pull-requests: read
+    outputs:
+      substantive: ${{ steps.classify.outputs.substantive }}
+    steps:
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+        id: classify
+        with:
+          subdir: ${{ inputs.subdir }}
+          exclude-subdirs: ${{ inputs.exclude-subdirs }}
+
+  tests:
+    name: "Julia ${{ inputs.julia-version }} - ${{ inputs.self-hosted && 'self-hosted' || inputs.os }} ${{ inputs.group != '' && format(' - {0}', inputs.group) || '' }}"
+    needs: classify
+    permissions:
+      contents: read
+    if: |
+      (
+        !github.event.pull_request.draft
+        || inputs.run-all-on-draft
+        || (inputs.os == 'ubuntu-latest' && inputs.julia-version == '1')
+      ) && (
+        (inputs.subdir == '' && inputs.exclude-subdirs == '')
+        || needs.classify.outputs.substantive == 'true'
+      )
     continue-on-error: ${{ inputs.continue-on-error || inputs.julia-version == 'nightly' }}
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
@@ -151,6 +183,7 @@ jobs:
         if: "${{ inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || '@.' }}"
 
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"
@@ -163,7 +196,7 @@ jobs:
       - name: "Run tests ${{ inputs.self-hosted && '' || format('on {0}', inputs.os) }} with Julia v${{ inputs.julia-version }}"
         uses: julia-actions/julia-runtest@v1
         with:
-          project: "${{ inputs.project }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || '@.' }}"
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
           prefix: "${{ inputs.test-prefix }}"
