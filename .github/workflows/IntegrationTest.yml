@@ -22,6 +22,23 @@ on:
         default: ""
         required: false
         type: string
+      subdir:
+        description: "Run the downstream tests against the package in this subdirectory."
+        default: ""
+        required: false
+        type: string
+      paths:
+        description: "Newline-separated list of path prefixes / files defining positive scope for the substantive-PR check. A file triggers IntegrationTest iff it equals one of these paths or starts with `<path>/`. Empty means no positive-scope filter; the check falls back to `exclude-paths`. Mutually exclusive with `exclude-paths`."
+        default: ""
+        required: false
+        type: string
+      exclude-paths:
+        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger IntegrationTest if it matches one of these. Default ignores `.gitignore` and `.pre-commit-config.yaml`."
+        default: |
+          .gitignore
+          .pre-commit-config.yaml
+        required: false
+        type: string
       run-on-draft:
         description: "When true, run integration tests even on draft PRs"
         default: false
@@ -53,6 +70,21 @@ jobs:
         pkg: ${{ fromJSON(inputs.pkgs) }}
 
     steps:
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+        id: classify
+        with:
+          # `subdir` (the in-tree package under test) is auto-appended
+          # to the positive scope so callers don't have to repeat it.
+          paths: |
+            ${{ inputs.subdir }}
+            ${{ inputs.paths }}
+          exclude-paths: ${{ inputs.exclude-paths }}
+
+      - name: "Skip on out-of-scope PR"
+        if: "${{ steps.classify.outputs.triggers != 'true' }}"
+        run: |
+          echo "PR has no changes in this caller's scope; integration test skipped."
+
       # Decide whether this matrix leg should run, and emit `skip=true|false`.
       # Skips when the entry is a URL that needs auth and the PR is from a
       # fork (no secrets are exposed to fork PRs under `pull_request:`).
@@ -62,6 +94,7 @@ jobs:
       # `workflow_dispatch` (where secrets are in scope).
       - name: "Decide whether to run"
         id: gate
+        if: "${{ steps.classify.outputs.triggers == 'true' }}"
         env:
           PKG: ${{ matrix.pkg }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -93,7 +126,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: "Record skipped dependency"
         id: skip_artifact
-        if: steps.gate.outputs.skip == 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip == 'true' }}"
         env:
           PKG: ${{ matrix.pkg }}
         run: |
@@ -103,22 +136,22 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - name: "Upload skipped-dependency marker"
-        if: steps.gate.outputs.skip == 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip == 'true' }}"
         uses: actions/upload-artifact@v7
         with:
           name: "integration-test-skip-${{ steps.skip_artifact.outputs.key }}"
           path: ${{ steps.skip_artifact.outputs.path }}
       - uses: actions/checkout@v6
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: julia-actions/setup-julia@v3
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - name: "Configure git authentication for private repository"
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         env:
           TOKEN: ${{ secrets.INTEGRATIONTEST_PAT }}
           PKG: ${{ matrix.pkg }}
@@ -129,12 +162,13 @@ jobs:
             fi
           fi
       - name: "Run the downstream tests"
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         shell: julia --color=yes --project=downstream {0}
         env:
           PKG: ${{ matrix.pkg }}
           LOCALREGISTRY: ${{ inputs.localregistry }}
           EXTRA_DEV_PATHS: ${{ inputs.extra-dev-paths }}
+          PKG_DIR: ${{ inputs.subdir || '.' }}
           JULIA_PKG_SERVER_REGISTRY_PREFERENCE: eager
         run: |
           using Pkg
@@ -148,7 +182,7 @@ jobs:
               Pkg.Registry.add(Pkg.RegistrySpec(; url=registry_url))
             end
           end
-          dev_paths = [".", split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
+          dev_paths = [get(ENV, "PKG_DIR", "."), split(get(ENV, "EXTRA_DEV_PATHS", ""), "\n")...]
           filter!(!isempty, dev_paths)
           dev_specs = [PackageSpec(; path) for path in dev_paths]
           pkg = get(ENV, "PKG", "")

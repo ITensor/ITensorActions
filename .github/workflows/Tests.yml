@@ -13,8 +13,8 @@ on:
         required: false
         type: string
       project:
-        description: "The value is passed to Julia's `--project` flag"
-        default: '@.'
+        description: "Deprecated alias for `subdir`. Value passed to Julia's `--project` flag. Set `subdir` instead. Will be removed in a future major release."
+        default: "@."
         required: false
         type: string
       group:
@@ -65,6 +65,28 @@ on:
       julia-runtest-depwarn:
         description: "Value of the --depwarn flag while running Julia"
         default: "yes"
+        required: false
+        type: string
+      test-args:
+        description: "Newline-separated list of arguments passed to `Pkg.test(; test_args=...)`. Surfaces julia-actions/julia-runtest's `test_args` input. Useful when `runtests.jl` selects test groups via ARGS rather than the GROUP env-var."
+        default: ""
+        required: false
+        type: string
+      subdir:
+        description: "Subdirectory containing the package's Project.toml. When set, Julia activates `<subdir>` for buildpkg and runtest. Empty (default) activates the repo root."
+        default: ""
+        required: false
+        type: string
+      paths:
+        description: "Newline-separated list of path prefixes / files defining positive scope for the substantive-PR check. A file triggers tests iff it equals one of these paths or starts with `<path>/`. Empty means no positive-scope filter; the check falls back to `exclude-paths`. Mutually exclusive with `exclude-paths`."
+        default: ""
+        required: false
+        type: string
+      exclude-paths:
+        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger if it matches one of these. Default ignores `.gitignore` and `.pre-commit-config.yaml`. Override entirely (e.g. add a sibling subpackage and re-list defaults if you want them kept)."
+        default: |
+          .gitignore
+          .pre-commit-config.yaml
         required: false
         type: string
       continue-on-error:
@@ -118,10 +140,26 @@ jobs:
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+        id: classify
+        with:
+          # `subdir` (the package being tested) is auto-appended to
+          # the positive scope so callers don't have to repeat it.
+          paths: |
+            ${{ inputs.subdir }}
+            ${{ inputs.paths }}
+          exclude-paths: ${{ inputs.exclude-paths }}
+
+      - name: "Skip on out-of-scope PR"
+        if: "${{ steps.classify.outputs.triggers != 'true' }}"
+        run: |
+          echo "PR has no changes in this caller's scope; tests skipped."
+
       - uses: actions/checkout@v6
+        if: "${{ steps.classify.outputs.triggers == 'true' }}"
 
       - name: "Install apt packages"
-        if: "${{ inputs.apt-packages != '' && runner.os == 'Linux' }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.apt-packages != '' && runner.os == 'Linux' }}"
         env:
           APT_PACKAGES: ${{ inputs.apt-packages }}
         run: |
@@ -132,23 +170,25 @@ jobs:
           sudo apt-get install -y $APT_PACKAGES
 
       - name: "Setup Julia ${{ inputs.julia-version }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' }}"
         uses: julia-actions/setup-julia@v3
         with:
           version: "${{ inputs.julia-version }}"
           arch: "${{ inputs.julia-arch || runner.arch }}"
 
       - uses: julia-actions/cache@v2
-        if: "${{ inputs.cache }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
 
       - uses: julia-actions/julia-buildpkg@v1
-        if: "${{ inputs.buildpkg }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.buildpkg }}"
         with:
           localregistry: "${{ inputs.localregistry }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
 
       - name: "Export extra environment variables"
-        if: "${{ inputs.extra-env != '' }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.extra-env != '' }}"
         shell: "bash"
         env:
           EXTRA_ENV: ${{ inputs.extra-env }}
@@ -156,12 +196,14 @@ jobs:
           printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
 
       - name: "Run tests ${{ inputs.self-hosted && '' || format('on {0}', inputs.os) }} with Julia v${{ inputs.julia-version }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' }}"
         uses: julia-actions/julia-runtest@v1
         with:
-          project: "${{ inputs.project }}"
+          project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
           depwarn: "${{ inputs.julia-runtest-depwarn }}"
           coverage: "${{ inputs.coverage }}"
           prefix: "${{ inputs.test-prefix }}"
+          test_args: "${{ inputs.test-args }}"
           # On LTS, accept that newer dep versions may not be reachable —
           # let Pkg resolve to whatever satisfies both the workspace compat
           # and transitive constraints. `auto` (the default) would otherwise
@@ -174,20 +216,20 @@ jobs:
           JULIA_NUM_THREADS: "${{ inputs.nthreads }}"
 
       - name: "Upload artifacts"
-        if: "${{ always() && inputs.upload-artifacts-path != '' }}"
+        if: "${{ always() && steps.classify.outputs.triggers == 'true' && inputs.upload-artifacts-path != '' }}"
         uses: actions/upload-artifact@v7
         with:
           name: "artifacts-${{ inputs.os }}-julia-${{ inputs.julia-version }}${{ inputs.group != '' && format('-{0}', inputs.group) || '' }}"
           path: "${{ inputs.upload-artifacts-path }}"
 
       - uses: julia-actions/julia-processcoverage@v1
-        if: "${{ inputs.coverage }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.coverage }}"
         with:
           directories: "${{ inputs.coverage-directories }}"
 
       - name: "Report coverage with Codecov"
         uses: codecov/codecov-action@v6
-        if: "${{ inputs.coverage }}"
+        if: "${{ steps.classify.outputs.triggers == 'true' && inputs.coverage }}"
         with:
           files: lcov.info
           token: "${{ secrets.CODECOV_TOKEN }}"

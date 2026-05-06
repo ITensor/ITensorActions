@@ -148,8 +148,12 @@ the full matrix even on draft PRs, set it to `true`:
 |---|---|---|---|
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
 | `julia-arch` | string | runner arch | Architecture of Julia to be used. |
-| `project` | string | `"@."` | Value passed to Julia's `--project` flag. |
+| `subdir` | string | `""` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, Julia activates `<subdir>` for buildpkg and runtest, and `<subdir>` is auto-appended to `paths` so the per-package classify-pr step considers files inside it as in-scope. |
+| `project` | string | `"@."` | Deprecated alias for `subdir`. Value passed to Julia's `--project` flag. Set `subdir` instead; will be removed in a future major release. |
 | `group` | string | `""` | Test group selector. Exposed to tests via the `GROUP` environment variable so a `runtests.jl` can selectively run a subset. |
+| `test-args` | string | `""` | Newline-separated arguments forwarded to `Pkg.test(; test_args=...)` (via `julia-actions/julia-runtest`'s `test_args` input). Useful when `runtests.jl` selects test groups via `ARGS` rather than the `GROUP` env-var. |
+| `paths` | string | `""` | Positive scope for the substantive-PR check: a file triggers tests iff it equals one of these paths or starts with `<path>/`. Newline-separated. Mutually exclusive with `exclude-paths`. The `subdir` input (if set) is auto-appended. |
+| `exclude-paths` | string | `.gitignore`<br>`.pre-commit-config.yaml` | Negative scope: a file does NOT trigger tests if it matches one of these paths. Default ignores pure metadata files only — workflow file edits (`.github/workflows/**`) do count, by design. Override entirely (defaults are not implicitly preserved). |
 | `self-hosted` | bool | `false` | Run on a self-hosted runner instead of `os`. |
 | `os` | string | `"ubuntu-latest"` | Runner image used when `self-hosted` is `false`. |
 | `nthreads` | number | `1` | Value of `JULIA_NUM_THREADS`. |
@@ -430,6 +434,7 @@ jobs:
 |---|---|---|---|
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs (besides General) to scan for dependency updates. |
+| `subdir` | string | `""` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, CompatHelper bumps `<subdir>/Project.toml` plus its `<subdir>/{docs,examples,test}/Project.toml` siblings if present. Empty (default) bumps the standard root + docs + examples + test set. |
 
 ### Secrets
 
@@ -600,7 +605,10 @@ jobs:
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
 | `pkgs` | string | **required** | JSON-array string of registered package names and/or git URLs. Use `'[]'` to configure no downstream tests. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving. |
+| `subdir` | string | `""` | Run the downstream tests against the package located in this subdirectory (rather than the repo root). When set, `<subdir>` is also auto-appended to `paths` so the per-package classify-pr considers files inside it as in-scope. |
 | `extra-dev-paths` | string | `""` | Newline-separated list of additional local package paths to develop alongside the repository root before testing downstream packages. |
+| `paths` | string | `""` | Positive scope for the substantive-PR check: a file triggers IntegrationTest iff it equals one of these paths or starts with `<path>/`. Newline-separated. Mutually exclusive with `exclude-paths`. The `subdir` input (if set) is auto-appended. |
+| `exclude-paths` | string | `.gitignore`<br>`.pre-commit-config.yaml` | Negative scope: a file does NOT trigger IntegrationTest if it matches one of these. Default ignores pure metadata files only. Override entirely. |
 | `run-on-draft` | bool | `false` | Run integration tests on draft PRs. When `false`, draft PRs skip integration tests entirely. |
 
 The companion `IntegrationTestRequest.yml` workflow (used for the `/integrationtest ...` comment trigger shown above) has its own inputs:
@@ -641,9 +649,12 @@ jobs:
 | Input | Type | Default | Description |
 |---|---|---|---|
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
-| `localregistry` | string | `""` | Newline-separated list of extra registry URLs to consult when determining the previously registered version. |
+| `localregistry` | string | `""` | Unused, kept for backward compat with existing callers. |
+| `subdir` | string | `""` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, the version-bump check reads `<subdir>/Project.toml` instead of root, and `<subdir>` is auto-appended to `paths` so the substantive-PR check is scoped to that subpackage. |
+| `paths` | string | `""` | Positive scope for the substantive-PR check: a file triggers VersionCheck iff it matches one of these paths. Newline-separated. Mutually exclusive with `exclude-paths`. |
+| `exclude-paths` | string | `.gitignore`<br>`.pre-commit-config.yaml`<br>`.github` | Negative scope: a file does NOT trigger VersionCheck if it matches one of these. Default ignores pure metadata plus `.github` (workflow-only PRs don't require a version bump). Override entirely. |
 
-The check is automatically skipped on PRs classified as non-substantive (changes limited to `.github/**`, `.pre-commit-config.yaml`, `.gitignore`, or `LICENSE`); those PRs pass without requiring a version bump.
+The version-bump check is skipped (reported as success) when classify-pr says no in-scope files changed — for example a workflow-only PR on a single-package consumer (default `exclude-paths` includes `.github`), or an NDTensors-only PR on a multi-package caller scoped to root via `exclude-paths: NDTensors`.
 
 ## Check Compat Bounds
 
@@ -685,7 +696,8 @@ jobs:
 | Input | Type | Default | Description |
 |---|---|---|---|
 | `julia-version` | string | `"1"` | Julia version passed to `julia-actions/setup-julia`. |
-| `project` | string | `"@."` | Value passed to Julia's `--project` flag during `julia-actions/julia-buildpkg`. |
+| `subdir` | string | `""` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, both `project` (buildpkg's `--project`) and `workspace-root` (the check-compat-bounds script's workspace root) resolve to `<subdir>`. |
+| `project` | string | `"@."` | Deprecated alias for `subdir`. Value passed to Julia's `--project` flag during `julia-actions/julia-buildpkg`. When `subdir` is set, it takes precedence. |
 | `cache` | bool | `true` | Use `julia-actions/cache`. |
 | `buildpkg` | bool | `true` | Run `julia-actions/julia-buildpkg` before the check. Disable only if the workspace is instantiated some other way. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving (forwarded to `julia-actions/julia-buildpkg`). |
@@ -851,6 +863,7 @@ jobs:
 | `localregistry` | Local registry repo (`owner/name`) for packages not in General | `""` |
 | `trigger` | Comment trigger phrase for on-demand registration | `/register` |
 | `julia-version` | Julia version used by the workflow | `1` |
+| `subdir` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, the workflow reads `package/<subdir>/Project.toml` instead of root and posts `@JuliaRegistrator register subdir=<subdir>`, so multi-package repos can auto-register each in-tree package via a matrix invocation. | `""` |
 
 ### Secrets
 

@@ -1,9 +1,20 @@
-name: "Classify PR substance"
-description: "Determines whether a PR touches substantive files or only CI/config (workflow-only) files. Outputs substantive=true|false."
+name: "Classify PR scope"
+description: "Reports whether a PR has changes that should trigger this caller's work, given a path scope. A file 'triggers' iff it matches the caller's scope and is not in the exclude list. Outputs triggers=true|false."
+inputs:
+  paths:
+    description: "Newline-separated list of path prefixes / files defining positive scope. A file triggers iff it equals one of these paths or is inside one (i.e., starts with `<path>/`). Empty means everything is in scope. Mutually exclusive with `exclude-paths`."
+    required: false
+    default: ""
+  exclude-paths:
+    description: "Newline-separated list of path prefixes / files defining negative scope. A file does NOT trigger if it equals one of these or is inside one. Default ignores `.gitignore` and `.pre-commit-config.yaml`. Override entirely (e.g. include the package's sibling subpackage and re-list defaults if you want them kept)."
+    required: false
+    default: |
+      .gitignore
+      .pre-commit-config.yaml
 outputs:
-  substantive:
-    description: "true if the PR touches substantive files; false if all changes are confined to .github/**, .pre-commit-config.yaml, .gitignore, or LICENSE."
-    value: ${{ steps.classify.outputs.substantive }}
+  triggers:
+    description: "true if the PR has at least one changed file that matches the configured scope; false otherwise."
+    value: ${{ steps.classify.outputs.triggers }}
 runs:
   using: "composite"
   steps:
@@ -13,27 +24,82 @@ runs:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        PATHS: ${{ inputs.paths }}
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
       run: |
         set -euo pipefail
+        # Normalize: treat whitespace-only inputs as empty. This matters
+        # because reusables that auto-append a value (e.g. `subdir`) into
+        # `paths` produce a list of all-empty lines when the appended
+        # value is also empty — bash's [ -n ] would otherwise misread that
+        # as "positive scope set", flipping the action into the wrong mode.
+        has_content() {
+          while IFS= read -r line; do
+            [ -n "$line" ] && return 0
+          done <<< "$1"
+          return 1
+        }
+        has_content "$PATHS" || PATHS=""
+        has_content "$EXCLUDE_PATHS" || EXCLUDE_PATHS=""
+
+        if [ -n "$PATHS" ] && [ -n "$EXCLUDE_PATHS" ]; then
+          # If paths is set, exclude-paths is ignored (caller is using positive scope).
+          # Surface a warning rather than failing so the user notices.
+          echo "::warning::classify-pr: 'paths' and 'exclude-paths' are mutually exclusive; using 'paths'."
+          EXCLUDE_PATHS=""
+        fi
         if [ -z "${PR_NUMBER:-}" ]; then
-          echo "Not a pull_request event; defaulting to substantive=true."
-          echo "substantive=true" >> "$GITHUB_OUTPUT"
+          echo "Not a pull_request event; defaulting to triggers=true."
+          echo "triggers=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
         if [ -z "$files" ]; then
-          echo "No files reported for PR #${PR_NUMBER}; defaulting to substantive=true."
-          echo "substantive=true" >> "$GITHUB_OUTPUT"
+          echo "No files reported for PR #${PR_NUMBER}; defaulting to triggers=true."
+          echo "triggers=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         echo "Changed files:"
         printf '  %s\n' $files
-        substantive=false
+
+        # Helper: check if a file matches any entry in a newline-separated list.
+        # An entry matches iff the file equals the entry, or the file starts with `<entry>/`.
+        matches_list() {
+          local file=$1
+          local list=$2
+          while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            if [ "$file" = "$entry" ] || [[ "$file" == "$entry"/* ]]; then
+              return 0
+            fi
+          done <<< "$list"
+          return 1
+        }
+
+        if [ -n "$PATHS" ]; then
+          echo "Positive scope: any file matching one of the paths."
+          printf '  %s\n' $PATHS
+        else
+          echo "Default scope: any file outside the exclude list."
+          printf '  exclude: %s\n' $EXCLUDE_PATHS
+        fi
+
+        triggers=false
         while IFS= read -r file; do
-          case "$file" in
-            .github/*|.pre-commit-config.yaml|.gitignore|LICENSE) ;;
-            *) substantive=true; break ;;
-          esac
+          if [ -n "$PATHS" ]; then
+            # Positive scope: file triggers iff it matches one of the listed paths.
+            if matches_list "$file" "$PATHS"; then
+              triggers=true
+              break
+            fi
+          else
+            # Negative scope: file triggers iff it is NOT in the exclude list.
+            if ! matches_list "$file" "$EXCLUDE_PATHS"; then
+              triggers=true
+              break
+            fi
+          fi
         done <<< "$files"
-        echo "substantive=${substantive}"
-        echo "substantive=${substantive}" >> "$GITHUB_OUTPUT"
+
+        echo "triggers=${triggers}"
+        echo "triggers=${triggers}" >> "$GITHUB_OUTPUT"
