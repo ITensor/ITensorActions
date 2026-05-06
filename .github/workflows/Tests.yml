@@ -143,7 +143,11 @@ jobs:
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
         id: classify
         with:
-          paths: ${{ inputs.paths }}
+          # `subdir` (the package being tested) is auto-appended to
+          # the positive scope so callers don't have to repeat it.
+          paths: |
+            ${{ inputs.subdir }}
+            ${{ inputs.paths }}
           exclude-paths: ${{ inputs.exclude-paths }}
 
       - name: "Skip on out-of-scope PR"

@@ -46,7 +46,12 @@ jobs:
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
         id: classify
         with:
-          paths: ${{ inputs.paths }}
+          # `subdir` (the in-tree package whose Project.toml is checked) is
+          # auto-appended to the positive scope so callers don't have to
+          # repeat it.
+          paths: |
+            ${{ inputs.subdir }}
+            ${{ inputs.paths }}
           exclude-paths: ${{ inputs.exclude-paths }}
 
       - name: "Skip version check on out-of-scope PR"
