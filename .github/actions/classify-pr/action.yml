@@ -28,6 +28,20 @@ runs:
         EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
       run: |
         set -euo pipefail
+        # Normalize: treat whitespace-only inputs as empty. This matters
+        # because reusables that auto-append a value (e.g. `subdir`) into
+        # `paths` produce a list of all-empty lines when the appended
+        # value is also empty — bash's [ -n ] would otherwise misread that
+        # as "positive scope set", flipping the action into the wrong mode.
+        has_content() {
+          while IFS= read -r line; do
+            [ -n "$line" ] && return 0
+          done <<< "$1"
+          return 1
+        }
+        has_content "$PATHS" || PATHS=""
+        has_content "$EXCLUDE_PATHS" || EXCLUDE_PATHS=""
+
         if [ -n "$PATHS" ] && [ -n "$EXCLUDE_PATHS" ]; then
           # If paths is set, exclude-paths is ignored (caller is using positive scope).
           # Surface a warning rather than failing so the user notices.
