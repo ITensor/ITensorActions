@@ -23,22 +23,24 @@ on:
         required: false
         type: string
       subdir:
-        description: "Run the downstream tests against the package in this subdirectory. Also scopes the substantive-PR check to files under `<subdir>/`."
+        description: "Run the downstream tests against the package in this subdirectory."
         default: ""
         required: false
         type: string
-      exclude-subdirs:
-        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore."
+      paths:
+        description: "Newline-separated list of path prefixes / files defining positive scope for the substantive-PR check. A file triggers IntegrationTest iff it equals one of these paths or starts with `<path>/`. Empty means no positive-scope filter; the check falls back to `exclude-paths`. Mutually exclusive with `exclude-paths`."
         default: ""
+        required: false
+        type: string
+      exclude-paths:
+        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger IntegrationTest if it matches one of these. Default ignores `.gitignore` and `.pre-commit-config.yaml`."
+        default: |
+          .gitignore
+          .pre-commit-config.yaml
         required: false
         type: string
       run-on-draft:
         description: "When true, run integration tests even on draft PRs"
-        default: false
-        required: false
-        type: boolean
-      run-on-nonsubstantive:
-        description: "Defaults to false so metadata-only changes don't trigger downstream tests."
         default: false
         required: false
         type: boolean
@@ -48,25 +50,8 @@ on:
         required: false
 
 jobs:
-  # Classify PR substance up front so the matrix and gate jobs can both
-  # gate on it. Non-substantive PRs (touching only `.github/**`,
-  # `.pre-commit-config.yaml`, `.gitignore`, `LICENSE`) skip the matrix
-  # entirely by default; the gate then short-circuits to success.
-  classify:
-    name: "Classify PR substance"
-    runs-on: ubuntu-latest
-    outputs:
-      substantive: ${{ steps.classify.outputs.substantive }}
-    steps:
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
-        id: classify
-        with:
-          subdir: ${{ inputs.subdir }}
-          exclude-subdirs: ${{ inputs.exclude-subdirs }}
-
   integration-test:
     name: "${{ matrix.pkg }}"
-    needs: classify
     # Skip the matrix-driven leg entirely when `pkgs` is empty. Without this
     # guard, GitHub Actions reports an empty-matrix job as `failure`, which
     # propagates to the run's overall conclusion even though the aggregating
@@ -75,8 +60,7 @@ jobs:
     # the check is robust against whitespace / block-scalar style.
     if: |
       fromJSON(inputs.pkgs)[0] != null &&
-      (!github.event.pull_request.draft || inputs.run-on-draft) &&
-      (needs.classify.outputs.substantive == 'true' || inputs.run-on-nonsubstantive)
+      (!github.event.pull_request.draft || inputs.run-on-draft)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -86,6 +70,17 @@ jobs:
         pkg: ${{ fromJSON(inputs.pkgs) }}
 
     steps:
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
+        id: classify
+        with:
+          paths: ${{ inputs.paths }}
+          exclude-paths: ${{ inputs.exclude-paths }}
+
+      - name: "Skip on out-of-scope PR"
+        if: "${{ steps.classify.outputs.triggers != 'true' }}"
+        run: |
+          echo "PR has no changes in this caller's scope; integration test skipped."
+
       # Decide whether this matrix leg should run, and emit `skip=true|false`.
       # Skips when the entry is a URL that needs auth and the PR is from a
       # fork (no secrets are exposed to fork PRs under `pull_request:`).
@@ -95,6 +90,7 @@ jobs:
       # `workflow_dispatch` (where secrets are in scope).
       - name: "Decide whether to run"
         id: gate
+        if: "${{ steps.classify.outputs.triggers == 'true' }}"
         env:
           PKG: ${{ matrix.pkg }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -126,7 +122,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
       - name: "Record skipped dependency"
         id: skip_artifact
-        if: steps.gate.outputs.skip == 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip == 'true' }}"
         env:
           PKG: ${{ matrix.pkg }}
         run: |
@@ -136,22 +132,22 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - name: "Upload skipped-dependency marker"
-        if: steps.gate.outputs.skip == 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip == 'true' }}"
         uses: actions/upload-artifact@v7
         with:
           name: "integration-test-skip-${{ steps.skip_artifact.outputs.key }}"
           path: ${{ steps.skip_artifact.outputs.path }}
       - uses: actions/checkout@v6
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: julia-actions/setup-julia@v3
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         with:
           version: ${{ inputs.julia-version }}
           arch: x64
       - name: "Configure git authentication for private repository"
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         env:
           TOKEN: ${{ secrets.INTEGRATIONTEST_PAT }}
           PKG: ${{ matrix.pkg }}
@@ -162,7 +158,7 @@ jobs:
             fi
           fi
       - name: "Run the downstream tests"
-        if: steps.gate.outputs.skip != 'true'
+        if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         shell: julia --color=yes --project=downstream {0}
         env:
           PKG: ${{ matrix.pkg }}
@@ -228,7 +224,7 @@ jobs:
   # posts a passing check with the same name to satisfy branch protection.
   gate:
     name: "IntegrationTest"
-    needs: [classify, integration-test]
+    needs: integration-test
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -248,14 +244,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
-          SUBSTANTIVE: ${{ needs.classify.outputs.substantive }}
-          RUN_ON_NONSUBSTANTIVE: ${{ inputs.run-on-nonsubstantive }}
         run: |
-          echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME substantive=$SUBSTANTIVE"
-          if [ "$SUBSTANTIVE" != "true" ] && [ "$RUN_ON_NONSUBSTANTIVE" != "true" ]; then
-            echo "PR is non-substantive (only .github/**, .pre-commit-config.yaml, .gitignore, LICENSE); IntegrationTest skipped without running. Set inputs.run-on-nonsubstantive=true on the caller to override."
-            exit 0
-          fi
+          echo "test.result=$RESULT pkgs=$PKGS event=$EVENT_NAME"
           pkg_count=$(printf '%s' "$PKGS" | jq 'length')
           if [ "$pkg_count" -eq 0 ]; then
             echo "No downstream integration tests configured; passing."

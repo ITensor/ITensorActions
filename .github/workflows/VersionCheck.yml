@@ -14,13 +14,21 @@ on:
         required: false
         type: string
       subdir:
-        description: "Subdirectory containing the package's Project.toml. When set, VersionCheck reads `<subdir>/Project.toml` and classify-pr scopes the substantive-PR check to files under `<subdir>/`. Empty (default) reads root Project.toml."
+        description: "Subdirectory containing the package's Project.toml. When set, VersionCheck reads `<subdir>/Project.toml` for the version-bump check. Empty (default) reads root Project.toml."
         default: ""
         required: false
         type: string
-      exclude-subdirs:
-        description: "Negative scope for the substantive-PR check at root: newline-separated siblings to ignore."
+      paths:
+        description: "Newline-separated list of path prefixes / files defining positive scope for the substantive-PR check. A file triggers VersionCheck iff it equals one of these paths or starts with `<path>/`. Empty means no positive-scope filter; the check falls back to `exclude-paths`. Mutually exclusive with `exclude-paths`."
         default: ""
+        required: false
+        type: string
+      exclude-paths:
+        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger VersionCheck if it matches one of these. Default ignores `.gitignore`, `.pre-commit-config.yaml`, and `.github` (workflow / config metadata changes don't require a version bump)."
+        default: |
+          .gitignore
+          .pre-commit-config.yaml
+          .github
         required: false
         type: string
 
@@ -38,25 +46,25 @@ jobs:
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
         id: classify
         with:
-          subdir: ${{ inputs.subdir }}
-          exclude-subdirs: ${{ inputs.exclude-subdirs }}
+          paths: ${{ inputs.paths }}
+          exclude-paths: ${{ inputs.exclude-paths }}
 
-      - name: "Skip version check on non-substantive PR"
-        if: steps.classify.outputs.substantive != 'true'
+      - name: "Skip version check on out-of-scope PR"
+        if: steps.classify.outputs.triggers != 'true'
         run: |
-          echo "PR has no substantive changes in scope; no version bump required. Reporting success."
+          echo "PR has no changes in this caller's scope; no version bump required. Reporting success."
 
       - name: "Fetch base branch"
-        if: steps.classify.outputs.substantive == 'true'
+        if: steps.classify.outputs.triggers == 'true'
         run: git fetch --depth=1 origin "${{ github.base_ref }}"
 
       - uses: julia-actions/setup-julia@v3
-        if: steps.classify.outputs.substantive == 'true'
+        if: steps.classify.outputs.triggers == 'true'
         with:
           version: ${{ inputs.julia-version }}
 
       - name: "Check version was bumped"
-        if: steps.classify.outputs.substantive == 'true'
+        if: steps.classify.outputs.triggers == 'true'
         shell: julia --color=yes {0}
         env:
           SUBDIR: ${{ inputs.subdir }}
