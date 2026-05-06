@@ -82,7 +82,7 @@ jobs:
           project: "${{ inputs.subdir != '' && inputs.subdir || inputs.project }}"
 
       - name: "Check compat upper bounds"
-        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@main
+        uses: ITensor/ITensorActions/.github/actions/check-compat-bounds@a4d5e21d6ae80b90976ac25848ea5cf9028bf584
         with:
           workspace-root: "${{ inputs.subdir != '' && inputs.subdir || inputs.workspace-root }}"
           mode: "${{ inputs.mode }}"
