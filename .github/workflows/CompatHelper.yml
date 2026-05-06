@@ -113,9 +113,8 @@ jobs:
             end
           end
           subdir = get(ENV, "SUBDIR", "")
-          subdirs = isempty(subdir) ?
-              ["", "docs", "examples", "test"] :
-              [subdir, joinpath(subdir, "docs"), joinpath(subdir, "examples"), joinpath(subdir, "test")]
+          subdirs = ["", "docs", "examples", "test"]
+          isempty(subdir) || (subdirs = joinpath.(subdir, subdirs))
           token_owner = get(ENV, "TOKEN_OWNER", "")
           # If TOKEN_OWNER contains a JSON error body (happens when only GITHUB_TOKEN
           # is available, e.g. in private repos without COMPATHELPER_PAT), treat it as
