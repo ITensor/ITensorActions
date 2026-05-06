@@ -53,7 +53,26 @@ runs:
           echo "triggers=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+        # Retry the API call on transient failures. GitHub's API
+        # occasionally returns a 5xx HTML error page, which causes
+        # `gh api --jq` to exit non-zero with a JSON parse error like
+        # `invalid character '<' looking for beginning of value`. A
+        # short retry loop with backoff lets transient flakes recover
+        # without flunking the run.
+        attempt=1
+        while :; do
+          if files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename'); then
+            break
+          fi
+          if [ "$attempt" -ge 3 ]; then
+            echo "classify-pr: gh api failed after 3 attempts" >&2
+            exit 1
+          fi
+          delay=$((2 ** attempt))
+          echo "classify-pr: gh api attempt $attempt failed; retrying in ${delay}s..." >&2
+          sleep "$delay"
+          attempt=$((attempt + 1))
+        done
         if [ -z "$files" ]; then
           echo "No files reported for PR #${PR_NUMBER}; defaulting to triggers=true."
           echo "triggers=true" >> "$GITHUB_OUTPUT"
