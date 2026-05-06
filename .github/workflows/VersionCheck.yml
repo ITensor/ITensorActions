@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@mf/subdir-inputs
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
         id: classify
         with:
           # `subdir` (the in-tree package whose Project.toml is checked) is
