@@ -221,6 +221,10 @@ jobs:
   # that branch protection can require. Behavior:
   #   - matrix succeeded            -> pass
   #   - `pkgs: '[]'`                -> pass (no downstream configured)
+  #   - draft + run-on-draft=false  -> skip (matches the matrix-leg's draft
+  #                                    skip; gate appears as Skipped on the PR
+  #                                    rather than Failure for the expected
+  #                                    no-signal case)
   #   - matrix all-skipped + fork   -> fail with /integrationtest hint
   #   - any failure                 -> fail
   # The fork-PR-all-skipped case is the trigger for the manual
@@ -229,7 +233,7 @@ jobs:
   gate:
     name: "IntegrationTest"
     needs: integration-test
-    if: ${{ always() }}
+    if: ${{ always() && (!github.event.pull_request.draft || inputs.run-on-draft) }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
