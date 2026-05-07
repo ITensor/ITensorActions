@@ -58,7 +58,7 @@ jobs:
   run-tests:
     name: "Run Tests"
     needs: get-pr-comment
-    uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@main
+    uses: ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@81440a121c9022308d3dc50654f354f1dc6da78a
     with:
       localregistry: "${{ inputs.localregistry }}"
       extra-dev-paths: "${{ inputs.extra-dev-paths }}"
