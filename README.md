@@ -567,9 +567,11 @@ success, satisfying the gate.
 
 ### Draft PR behavior
 
-By default, integration tests are skipped entirely for draft PRs. This is
-controlled by the `run-on-draft` input (default: `false`). To run integration
-tests even on draft PRs, set it to `true`:
+By default, integration tests are skipped entirely for draft PRs. The matrix
+legs and the aggregate `IntegrationTest` gate both report as Skipped (not
+Failure) — the no-signal case on a draft is treated as expected, not a fault.
+This is controlled by the `run-on-draft` input (default: `false`). To run
+integration tests even on draft PRs, set it to `true`:
 
 ```yaml
     uses: "ITensor/ITensorActions/.github/workflows/IntegrationTest.yml@v2"
