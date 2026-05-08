@@ -102,7 +102,15 @@ jobs:
               end
           end
 
+          # Keep `valid_bump` in sync with the copy in VersionCheck.yml — the two
+          # workflows share the same bump-shape rules but cannot share Julia code
+          # across reusable workflow YAML without a heavier composite-action setup.
           function valid_bump(o::VersionNumber, n::VersionNumber)
+              # Strip-suffix release transition: same M.m.p, old had pre-release, new doesn't.
+              if n.major == o.major && n.minor == o.minor && n.patch == o.patch &&
+                 !isempty(o.prerelease) && isempty(n.prerelease)
+                  return true, "stripping pre-release suffix"
+              end
               # Only called when n > o
               if n.major == o.major && n.minor == o.minor
                   return (n.patch == o.patch + 1), "expected patch bump by 1"
@@ -111,6 +119,41 @@ jobs:
               else
                   return (n.major == o.major + 1 && n.minor == 0 && n.patch == 0), "expected major bump by 1 with minor/patch reset to 0"
               end
+          end
+
+          # Resolve the registration route ("general" if the package's UUID is
+          # already in the General registry, "local" otherwise).
+          function register_route(uuid)
+              ENV["JULIA_PKG_SERVER"] = ""
+              Pkg.Registry.add("General")
+              general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
+              general = TOML.parsefile(general_toml)
+              return haskey(get(general, "packages", Dict{String,Any}()), uuid) ? "general" : "local"
+          end
+
+          # Walk the git history of `project_path` on the current ref and return
+          # the most recent VersionNumber whose `prerelease` is empty (i.e., the
+          # most recent actually-released version), or `nothing` if there is none.
+          function find_last_released_version(repo_path, project_path)
+              log_output = try
+                  readlines(`git -C $repo_path log --pretty=%H HEAD -- $project_path`)
+              catch
+                  return nothing
+              end
+              for sha in log_output
+                  try
+                      toml_text = read(`git -C $repo_path show $sha:$project_path`, String)
+                      v_str = get(TOML.parse(toml_text), "version", "")
+                      isempty(v_str) && continue
+                      v = VersionNumber(v_str)
+                      if isempty(v.prerelease)
+                          return v
+                      end
+                  catch
+                      continue
+                  end
+              end
+              return nothing
           end
 
           let
@@ -154,48 +197,56 @@ jobs:
               # For issue_comment events, always attempt registration (skip version-change guards).
               is_force = get(ENV, "GITHUB_EVENT_NAME", "") == "issue_comment"
 
+              # Parse old version once up front; used by both the pre-release skip
+              # branch (for shape validation) and the normal registration branch.
+              oldv = isempty(oldv_str) ? nothing : parse_version(oldv_str, "old")
+
               route = "none"
               is_breaking = false
               skip_reason = ""
 
-              if !isempty(oldv_str)
-                  oldv = parse_version(oldv_str, "old")
-
+              # Skip registration entirely while the version carries a pre-release
+              # suffix (e.g., "0.22.0-DEV"): the package is accumulating breaking
+              # changes toward an eventual release. The release PR strips the
+              # suffix and is registered normally. is_force (manual /register)
+              # bypasses this and registers the pre-release version. Even on the
+              # skip path, validate the bump shape when entering pre-release mode
+              # so a malformed transition (e.g., 0.21.5 -> 0.99.0-DEV) is caught.
+              if !isempty(newv.prerelease) && !is_force
+                  if oldv !== nothing && newv > oldv
+                      ok, why = valid_bump(oldv, newv)
+                      ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
+                  end
+                  skip_reason = "pre-release version $newv_str; not registering during accumulation"
+              elseif oldv !== nothing
                   if newv == oldv && !is_force
-                      route = "none"
                       skip_reason = "Project.toml version unchanged ($newv_str)"
                   elseif newv < oldv && !is_force
-                      route = "none"
                       skip_reason = "Project.toml version decreased ($oldv_str -> $newv_str); skipping registration"
                   else
                       if newv > oldv
                           ok, why = valid_bump(oldv, newv)
                           is_force || ok || error("Invalid version bump: $oldv_str -> $newv_str ($why)")
 
+                          # When transitioning out of pre-release (strip-suffix release PR),
+                          # compare against the last actually-released version on this
+                          # branch's history rather than the previous (pre-release) commit
+                          # which would mis-classify the release as non-breaking.
+                          oldv_compare = if !isempty(oldv.prerelease) && isempty(newv.prerelease)
+                              something(find_last_released_version("package", project_path), oldv)
+                          else
+                              oldv
+                          end
                           # Breaking if: major bump OR (0.x) minor bump
-                          is_breaking = (newv.major > oldv.major) ||
-                                        (oldv.major == 0 && newv.major == 0 && newv.minor > oldv.minor)
+                          is_breaking = (newv.major > oldv_compare.major) ||
+                                        (oldv_compare.major == 0 && newv.major == 0 && newv.minor > oldv_compare.minor)
                       end
 
-                      ENV["JULIA_PKG_SERVER"] = ""
-                      Pkg.Registry.add("General")
-
-                      general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
-                      general = TOML.parsefile(general_toml)
-                      in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
-
-                      route = in_general ? "general" : "local"
+                      route = register_route(uuid)
                   end
               else
                   # No prior version found to compare against; proceed to route decision.
-                  ENV["JULIA_PKG_SERVER"] = ""
-                  Pkg.Registry.add("General")
-
-                  general_toml = joinpath(first(DEPOT_PATH), "registries", "General", "Registry.toml")
-                  general = TOML.parsefile(general_toml)
-                  in_general = haskey(get(general, "packages", Dict{String,Any}()), uuid)
-
-                  route = in_general ? "general" : "local"
+                  route = register_route(uuid)
               end
 
               open(ENV["GITHUB_OUTPUT"], "a") do io
