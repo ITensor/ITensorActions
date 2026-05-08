@@ -40,7 +40,7 @@ on:
         type: number
       run-on-draft:
         description: "When true, run the check even on draft PRs."
-        default: false
+        default: true
         required: false
         type: boolean
       mode:
