@@ -70,7 +70,7 @@ jobs:
 
       - name: "Check version was bumped"
         if: steps.classify.outputs.triggers == 'true'
-        uses: ITensor/ITensorActions/.github/actions/version-helpers@mf/share-version-helpers
+        uses: ITensor/ITensorActions/.github/actions/version-helpers@main
         with:
           mode: version-check
           subdir: ${{ inputs.subdir }}
