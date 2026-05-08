@@ -1,0 +1,63 @@
+name: "Version helper metadata"
+description: "Shared version-bump, registry-route, and release-history helper logic for ITensorActions workflows."
+inputs:
+  mode:
+    description: "`version-check` validates a PR version bump; `registrator-meta` computes Registrator route metadata."
+    required: true
+  package-path:
+    description: "Path to the checked-out package repository."
+    required: false
+    default: "."
+  subdir:
+    description: "Subdirectory containing the package Project.toml."
+    required: false
+    default: ""
+  base-ref:
+    description: "Base git ref containing the comparison Project.toml for version-check mode."
+    required: false
+    default: ""
+  old-ref:
+    description: "Prior git ref containing the comparison Project.toml for registrator-meta mode."
+    required: false
+    default: ""
+  force:
+    description: "If true, bypass version-change skip guards for manual registration."
+    required: false
+    default: "false"
+outputs:
+  route:
+    description: "Registration route: general, local, or none."
+    value: ${{ steps.compute.outputs.route }}
+  pkg_name:
+    description: "Package name from Project.toml."
+    value: ${{ steps.compute.outputs.pkg_name }}
+  uuid:
+    description: "Package UUID from Project.toml."
+    value: ${{ steps.compute.outputs.uuid }}
+  new_version:
+    description: "Package version from the checked-out Project.toml."
+    value: ${{ steps.compute.outputs.new_version }}
+  is_breaking:
+    description: "Whether the version transition is breaking."
+    value: ${{ steps.compute.outputs.is_breaking }}
+  subject:
+    description: "Subject of the package HEAD commit."
+    value: ${{ steps.compute.outputs.subject }}
+  skip_reason:
+    description: "Reason registration was skipped when route is none."
+    value: ${{ steps.compute.outputs.skip_reason }}
+runs:
+  using: "composite"
+  steps:
+    - id: compute
+      shell: julia --color=yes {0}
+      env:
+        VERSION_HELPERS_MODE: ${{ inputs.mode }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        SUBDIR: ${{ inputs.subdir }}
+        BASE_REF: ${{ inputs.base-ref }}
+        OLD_REF: ${{ inputs.old-ref }}
+        FORCE: ${{ inputs.force }}
+      run: |
+        include(joinpath(ENV["GITHUB_ACTION_PATH"], "version_helpers.jl"))
+        main()
