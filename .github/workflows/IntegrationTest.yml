@@ -70,7 +70,7 @@ jobs:
         pkg: ${{ fromJSON(inputs.pkgs) }}
 
     steps:
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@fe3dfd399dc770aeb0e151e04dbd3d4627b9e603
         id: classify
         with:
           # `subdir` (the in-tree package under test) is auto-appended
