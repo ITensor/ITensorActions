@@ -704,7 +704,7 @@ jobs:
 | `buildpkg` | bool | `true` | Run `julia-actions/julia-buildpkg` before the check. Disable only if the workspace is instantiated some other way. |
 | `localregistry` | string | `""` | Newline-separated list of extra registry URLs to add before resolving (forwarded to `julia-actions/julia-buildpkg`). |
 | `timeout-minutes` | number | `30` | Maximum job runtime. |
-| `run-on-draft` | bool | `false` | Run the check on draft PRs. |
+| `run-on-draft` | bool | `true` | Run the check on draft PRs. Set to `false` to skip this workflow while a PR is draft. |
 | `mode` | string | `"always"` | `"always"` runs on every invocation. `"never"` skips the check. `"auto"` runs only when `$GITHUB_ACTOR` is a known dependency-update bot (`github-actions[bot]`, `dependabot[bot]`). |
 | `workspace-root` | string | `"."` | Path to the workspace root (containing `Project.toml` and `Manifest.toml`). |
 

@@ -1,0 +1,240 @@
+name: "Dispatch package registration"
+description: "Dispatches a package registration through the route selected by version-helpers."
+inputs:
+  route:
+    description: "Registration route: general or local."
+    required: true
+  localregistry:
+    description: "Local registry repository, used for the local route."
+    required: false
+    default: ""
+  registrator-pat:
+    description: "Token used for registration writes."
+    required: false
+    default: ""
+  target-sha:
+    description: "Package commit SHA to register."
+    required: true
+  package-name:
+    description: "Package name."
+    required: true
+  package-uuid:
+    description: "Package UUID."
+    required: true
+  package-version:
+    description: "Package version."
+    required: true
+  is-breaking:
+    description: "Whether the version transition is breaking."
+    required: true
+  subject:
+    description: "Commit subject used in breaking release notes."
+    required: false
+    default: ""
+  subdir:
+    description: "Subdirectory containing the package Project.toml."
+    required: false
+    default: ""
+outputs:
+  comment-id:
+    description: "Commit comment id for the General route."
+    value: ${{ steps.general-comment.outputs.comment-id }}
+  pull-request-url:
+    description: "Registry PR URL for the local route."
+    value: ${{ steps.local-pr.outputs.pull-request-url }}
+  pull-request-operation:
+    description: "Registry PR operation for the local route."
+    value: ${{ steps.local-pr.outputs.pull-request-operation }}
+runs:
+  using: "composite"
+  steps:
+    - name: "Validate route"
+      shell: bash
+      env:
+        ROUTE: ${{ inputs.route }}
+      run: |
+        set -euo pipefail
+        case "$ROUTE" in
+          general|local) ;;
+          *)
+            echo "Unsupported registration route: $ROUTE" >&2
+            exit 1
+            ;;
+        esac
+
+    - name: "Compose Registrator commit comment"
+      if: ${{ inputs.route == 'general' }}
+      shell: bash
+      env:
+        IS_BREAKING: ${{ inputs.is-breaking }}
+        SUBJECT: ${{ inputs.subject }}
+        PACKAGE_VERSION: ${{ inputs.package-version }}
+        SUBDIR: ${{ inputs.subdir }}
+      run: |
+        {
+          if [ -n "$SUBDIR" ]; then
+            echo "@JuliaRegistrator register subdir=$SUBDIR"
+          else
+            echo "@JuliaRegistrator register"
+          fi
+          if [ "$IS_BREAKING" = "true" ]; then
+            echo ""
+            echo "Release notes:"
+            echo "- breaking: $SUBJECT (v$PACKAGE_VERSION)"
+          fi
+        } > registrator-comment.md
+
+    - name: "Trigger Registrator (General)"
+      if: ${{ inputs.route == 'general' }}
+      id: general-comment
+      uses: peter-evans/commit-comment@v4
+      with:
+        token: ${{ inputs.registrator-pat || github.token }}
+        sha: ${{ inputs.target-sha }}
+        body-path: registrator-comment.md
+
+    - name: "Summary (General)"
+      if: ${{ inputs.route == 'general' }}
+      shell: bash
+      env:
+        PACKAGE_VERSION: ${{ inputs.package-version }}
+        TARGET_SHA: ${{ inputs.target-sha }}
+        COMMENT_ID: ${{ steps.general-comment.outputs.comment-id }}
+        IS_BREAKING: ${{ inputs.is-breaking }}
+      run: |
+        {
+          echo "### Registrator"
+          echo "- Route: General"
+          echo "- Version: v$PACKAGE_VERSION"
+          echo "- Commit: \`$TARGET_SHA\`"
+          echo "- Commit comment id: $COMMENT_ID"
+          if [ "$IS_BREAKING" = "true" ]; then
+            echo "- Marked as breaking"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: "Validate local registry input"
+      if: ${{ inputs.route == 'local' && inputs.localregistry == '' }}
+      shell: bash
+      run: |
+        echo "inputs.localregistry is required when the package is not in General." >&2
+        exit 1
+
+    - name: "Validate REGISTRATOR_PAT (local registry)"
+      if: ${{ inputs.route == 'local' && inputs.registrator-pat == '' }}
+      shell: bash
+      run: |
+        echo "secrets.REGISTRATOR_PAT is required for the local registry path (checkout + PR)." >&2
+        exit 1
+
+    - name: "Checkout local registry"
+      if: ${{ inputs.route == 'local' }}
+      uses: actions/checkout@v6
+      with:
+        repository: "${{ inputs.localregistry }}"
+        path: registry
+        token: "${{ inputs.registrator-pat }}"
+
+    - name: "Detect token owner"
+      if: ${{ inputs.route == 'local' }}
+      id: token-owner
+      env:
+        GH_TOKEN: ${{ inputs.registrator-pat }}
+      shell: bash
+      run: |
+        json=$(gh api user 2>/dev/null || echo '{}')
+        login=$(echo "$json" | jq -r '.login // ""')
+        id=$(echo "$json" | jq -r '.id // ""')
+        if [ -n "$login" ]; then
+          name="$login"
+          email="${id}+${login}@users.noreply.github.com"
+        else
+          name="github-actions[bot]"
+          email="github-actions[bot]@users.noreply.github.com"
+        fi
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+        echo "email=$email" >> "$GITHUB_OUTPUT"
+
+    - name: "Compose PR metadata (local registry)"
+      if: ${{ inputs.route == 'local' }}
+      id: local-pr-metadata
+      env:
+        PKG_NAME: ${{ inputs.package-name }}
+        PKG_UUID: ${{ inputs.package-uuid }}
+        PKG_VERSION: ${{ inputs.package-version }}
+        IS_BREAKING: ${{ inputs.is-breaking }}
+        SUBJECT: ${{ inputs.subject }}
+        TARGET_SHA: ${{ inputs.target-sha }}
+      shell: julia --color=yes {0}
+      run: |
+        using TOML
+
+        reg = TOML.parsefile("registry/Registry.toml")
+        pkgs = get(reg, "packages", Dict{String,Any}())
+        is_new_pkg = !haskey(pkgs, ENV["PKG_UUID"])
+
+        kind = is_new_pkg ? "New package" : "New version"
+        title = "$kind: $(ENV["PKG_NAME"]) v$(ENV["PKG_VERSION"])"
+
+        body = "Commit: $(ENV["TARGET_SHA"])"
+        if ENV["IS_BREAKING"] == "true"
+            body *= "\n\nRelease notes:\n- breaking: $(ENV["SUBJECT"]) (v$(ENV["PKG_VERSION"]))"
+        end
+
+        open(ENV["GITHUB_OUTPUT"], "a") do io
+            println(io, "title=$title")
+            println(io, "body<<EOF")
+            print(io, body)
+            println(io)
+            println(io, "EOF")
+        end
+
+    - name: "Update local registry"
+      if: ${{ inputs.route == 'local' }}
+      env:
+        SUBDIR: ${{ inputs.subdir }}
+      shell: julia --color=yes {0}
+      run: |
+        import Pkg
+        Pkg.activate(mktempdir())
+        Pkg.add(Pkg.PackageSpec(name="LocalRegistry",
+                                uuid="89398ba2-070a-4b16-a995-9893c55d93cf",
+                                version="0.5.7"))
+        using LocalRegistry
+        subdir = get(ENV, "SUBDIR", "")
+        pkg_path = isempty(subdir) ? "./package" : joinpath("./package", subdir)
+        register(pkg_path; registry="./registry", commit=false, push=false)
+
+    - name: "Create PR to registry"
+      if: ${{ inputs.route == 'local' }}
+      id: local-pr
+      uses: peter-evans/create-pull-request@v8
+      with:
+        path: registry
+        branch: "registrator/${{ github.repository }}"
+        title: "${{ steps.local-pr-metadata.outputs.title }}"
+        body: "${{ steps.local-pr-metadata.outputs.body }}"
+        token: "${{ inputs.registrator-pat }}"
+        delete-branch: true
+        author: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
+        committer: "${{ steps.token-owner.outputs.name }} <${{ steps.token-owner.outputs.email }}>"
+
+    - name: "Summary (local registry)"
+      if: ${{ inputs.route == 'local' }}
+      shell: bash
+      env:
+        LOCAL_REGISTRY: ${{ inputs.localregistry }}
+        PACKAGE_VERSION: ${{ inputs.package-version }}
+        PULL_REQUEST_URL: ${{ steps.local-pr.outputs.pull-request-url }}
+        PULL_REQUEST_OPERATION: ${{ steps.local-pr.outputs.pull-request-operation }}
+      run: |
+        {
+          echo "### Registrator"
+          echo "- Route: Local registry (\`$LOCAL_REGISTRY\`)"
+          echo "- Version: v$PACKAGE_VERSION"
+          if [ -n "$PULL_REQUEST_URL" ]; then
+            echo "- PR ($PULL_REQUEST_OPERATION): $PULL_REQUEST_URL"
+          else
+            echo "- PR: none (no changes)"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
