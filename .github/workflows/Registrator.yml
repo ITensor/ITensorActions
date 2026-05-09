@@ -86,7 +86,7 @@ jobs:
 
       - name: "Decide route (General vs local) + validate version bump"
         id: meta
-        uses: ITensor/ITensorActions/.github/actions/version-helpers@main
+        uses: ITensor/ITensorActions/.github/actions/version-helpers@48df4851ecc2d6ad1f282bbb566230945b3b406c
         with:
           mode: registrator-meta
           package-path: package
@@ -105,7 +105,7 @@ jobs:
       - name: "Dispatch registration"
         if: steps.meta.outputs.route != 'none'
         id: dispatch
-        uses: ITensor/ITensorActions/.github/actions/register-version@main
+        uses: ITensor/ITensorActions/.github/actions/register-version@48df4851ecc2d6ad1f282bbb566230945b3b406c
         with:
           route: ${{ steps.meta.outputs.route }}
           localregistry: ${{ inputs.localregistry }}
