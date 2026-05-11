@@ -140,7 +140,7 @@ jobs:
     runs-on: "${{ inputs.self-hosted && 'self-hosted' || inputs.os }}"
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@eeb64d927b41cfb2555895d985cedd23c9a888b5
         id: classify
         with:
           # `subdir` (the package being tested) is auto-appended to
