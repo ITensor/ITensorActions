@@ -34,7 +34,7 @@ jobs:
     steps:
       - name: "Download FormatCheck artifact"
         id: download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: "format-check"
           run-id: ${{ github.event.workflow_run.id }}
