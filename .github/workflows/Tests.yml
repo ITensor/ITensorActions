@@ -176,7 +176,7 @@ jobs:
           version: "${{ inputs.julia-version }}"
           arch: "${{ inputs.julia-arch || runner.arch }}"
 
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
         if: "${{ steps.classify.outputs.triggers == 'true' && inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
