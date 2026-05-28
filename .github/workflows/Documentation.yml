@@ -98,6 +98,9 @@ jobs:
         if: "${{ inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
+          # See the comment in `Tests.yml`: don't cache a failed job's
+          # half-installed depot, which would otherwise poison the cache.
+          save-always: false
 
       - name: "Export extra environment variables"
         if: "${{ inputs.extra-env != '' }}"

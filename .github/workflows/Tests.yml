@@ -180,6 +180,11 @@ jobs:
         if: "${{ steps.classify.outputs.triggers == 'true' && inputs.cache }}"
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
+          # Restore the pre-v3 behavior: don't save a cache from a failed
+          # job. v3 caches on failure by default, which poisons the cache
+          # with broken state (e.g. a half-installed depot) and makes every
+          # subsequent run restore that broken state and fail the same way.
+          save-always: false
 
       - uses: julia-actions/julia-buildpkg@v1
         if: "${{ steps.classify.outputs.triggers == 'true' && inputs.buildpkg }}"
