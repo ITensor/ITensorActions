@@ -76,6 +76,9 @@ jobs:
       - uses: julia-actions/cache@v3
         with:
           delete-old-caches: false
+          # See the comment in `Tests.yml`: don't cache a failed job's
+          # half-installed depot, which would otherwise poison the cache.
+          save-always: false
 
       - name: "Checkout package"
         uses: actions/checkout@v6
