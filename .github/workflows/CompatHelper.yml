@@ -28,6 +28,14 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: "Checkout repository"
+        # CompatHelper.main clones the repo internally, but we also need the
+        # source on the runner so we can filter the `subdirs` list against
+        # which Project.tomls actually exist before passing it in.
+        # CompatHelper otherwise crashes on the first missing subdir and
+        # silently drops every later subdir in the list.
+        uses: actions/checkout@v6
+
       - name: "Check if Julia is already available in the PATH"
         id: julia_in_path
         run: which julia
@@ -115,6 +123,14 @@ jobs:
           subdir = get(ENV, "SUBDIR", "")
           subdirs = ["", "docs", "examples", "test"]
           isempty(subdir) || (subdirs = joinpath.(subdir, subdirs))
+          # Drop subdirs that don't actually have a Project.toml. Without
+          # this, CompatHelper throws `LoadError: ".../Project.toml": No
+          # such file` on the first missing one and silently skips every
+          # later subdir, dropping PRs it should have opened. The
+          # `actions/checkout` step above puts the source on the runner
+          # so we can do this check.
+          workspace = ENV["GITHUB_WORKSPACE"]
+          filter!(d -> isfile(joinpath(workspace, d, "Project.toml")), subdirs)
           token_owner = get(ENV, "TOKEN_OWNER", "")
           # If TOKEN_OWNER contains a JSON error body (happens when only GITHUB_TOKEN
           # is available, e.g. in private repos without COMPATHELPER_PAT), treat it as
