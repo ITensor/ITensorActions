@@ -654,9 +654,24 @@ jobs:
 | `localregistry` | string | `""` | Unused, kept for backward compat with existing callers. |
 | `subdir` | string | `""` | Subdirectory containing the package's Project.toml (for an in-tree subpackage). When set, the version-bump check reads `<subdir>/Project.toml` instead of root, and `<subdir>` is auto-appended to `paths` so the substantive-PR check is scoped to that subpackage. |
 | `paths` | string | `""` | Positive scope for the substantive-PR check: a file triggers VersionCheck iff it matches one of these paths. Newline-separated. Mutually exclusive with `exclude-paths`. |
-| `exclude-paths` | string | `.gitignore`<br>`.pre-commit-config.yaml`<br>`.github` | Negative scope: a file does NOT trigger VersionCheck if it matches one of these. Default ignores pure metadata plus `.github` (workflow-only PRs don't require a version bump). Override entirely. |
+| `exclude-paths` | string | `.gitignore`<br>`.pre-commit-config.yaml`<br>`.github`<br>`jenkins` | Negative scope: a file does NOT trigger VersionCheck if it matches one of these. Default ignores pure metadata plus `.github` and `jenkins` (workflow / CI-config-only PRs don't require a version bump). Setting this replaces the default — use `additional-exclude-paths` to extend the default instead. |
+| `additional-exclude-paths` | string | `""` | Newline-separated list of path prefixes / files appended to `exclude-paths`. Use this to extend the defaults (e.g. `NDTensors` for the ITensors.jl monorepo) without re-declaring the standard ignores. |
 
-The version-bump check is skipped (reported as success) when classify-pr says no in-scope files changed — for example a workflow-only PR on a single-package consumer (default `exclude-paths` includes `.github`), or an NDTensors-only PR on a multi-package caller scoped to root via `exclude-paths: NDTensors`.
+The version-bump check is skipped (reported as success) when classify-pr says no in-scope files changed — for example a workflow-only PR on a single-package consumer (default `exclude-paths` includes `.github`), or an NDTensors-only PR on a multi-package caller that scopes the in-tree subpackage out via `additional-exclude-paths: NDTensors`.
+
+### Prerelease accumulation
+
+A version with a non-empty prerelease suffix (`-DEV`, `-rc1`, `-alpha`, …) is treated as an in-progress accumulator. While the version carries any prerelease suffix, `VersionCheck` accepts successive PRs that leave the version unchanged (code changes are still allowed), and the companion `Registrator` workflow skips registration. The eventual strip-suffix PR (`M.m.p-pre` → `M.m.p`) registers a single release at the end, and `is_breaking` for that release is derived against the last actually-released (suffix-free) version rather than the immediately-prior prerelease commit.
+
+| From | To | Pattern | Effect |
+|---|---|---|---|
+| `0.21.5` | `0.22.0-DEV` | enter accumulation mode | bump-shape validated; registration skipped |
+| `0.22.0-DEV` | `0.22.0-DEV` | continuation PR | allowed unchanged; registration skipped |
+| `0.22.0-DEV` | `0.22.0` | release | registers; `is_breaking` against last released version |
+
+The suffix is freeform; any non-empty prerelease tag triggers the skip behavior. The ITensor ecosystem convention is `-DEV` (matching Julia's nightly versioning).
+
+`VersionCheck` also validates the bump shape pre-merge (patch+1 for non-breaking, minor+1 with patch=0 for pre-1.0 breaking, major+1 with minor=patch=0 for post-1.0 breaking) so malformed bumps fail the PR check directly rather than only after merge in `Registrator`.
 
 ## Check Compat Bounds
 
@@ -811,6 +826,12 @@ already registered there, or to a local registry otherwise.
 When a commit is pushed to `main`/`master` that changes `Project.toml`, the workflow
 checks whether the version has increased and, if so, triggers registration. The version
 bump must follow semver (patch, minor, or major increment by exactly 1).
+
+Versions carrying a prerelease suffix (`-DEV`, `-rc1`, …) are treated as in-progress
+accumulators: `Registrator` skips registration on those commits, and only the eventual
+strip-suffix release commit (`M.m.p-pre` → `M.m.p`) registers a single release. See
+[Prerelease accumulation](#prerelease-accumulation) under the VersionCheck section for
+the full convention.
 
 ### On-demand registration via comment
 
