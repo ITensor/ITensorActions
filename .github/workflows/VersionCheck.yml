@@ -24,12 +24,17 @@ on:
         required: false
         type: string
       exclude-paths:
-        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger VersionCheck if it matches one of these. Default ignores `.gitignore`, `.pre-commit-config.yaml`, `.github`, and `jenkins` (workflow / config metadata changes don't require a version bump)."
+        description: "Newline-separated list of path prefixes / files defining negative scope for the substantive-PR check. A file does NOT trigger VersionCheck if it matches one of these. Default ignores `.gitignore`, `.pre-commit-config.yaml`, `.github`, and `jenkins` (workflow / config metadata changes don't require a version bump). Setting this replaces the default; use `additional-exclude-paths` to extend the default instead."
         default: |
           .gitignore
           .pre-commit-config.yaml
           .github
           jenkins
+        required: false
+        type: string
+      additional-exclude-paths:
+        description: "Newline-separated list of path prefixes / files appended to `exclude-paths`. Use this to extend the defaults (e.g. `NDTensors` for the ITensors.jl monorepo) without re-declaring the standard ignores."
+        default: ""
         required: false
         type: string
 
@@ -53,7 +58,9 @@ jobs:
           paths: |
             ${{ inputs.subdir }}
             ${{ inputs.paths }}
-          exclude-paths: ${{ inputs.exclude-paths }}
+          exclude-paths: |
+            ${{ inputs.exclude-paths }}
+            ${{ inputs.additional-exclude-paths }}
 
       - name: "Skip version check on out-of-scope PR"
         if: steps.classify.outputs.triggers != 'true'
