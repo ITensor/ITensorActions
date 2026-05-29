@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@4a0fcf32bfa190a3e0ba8f992f1328f66d5d4afb
         id: classify
         with:
           # `subdir` (the in-tree package whose Project.toml is checked) is
@@ -71,7 +71,7 @@ jobs:
 
       - name: "Check version was bumped"
         if: steps.classify.outputs.triggers == 'true'
-        uses: ITensor/ITensorActions/.github/actions/version-helpers@main
+        uses: ITensor/ITensorActions/.github/actions/version-helpers@4a0fcf32bfa190a3e0ba8f992f1328f66d5d4afb
         with:
           mode: version-check
           subdir: ${{ inputs.subdir }}
