@@ -155,7 +155,7 @@ jobs:
         run: |
           echo "PR has no changes in this caller's scope; tests skipped."
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: "${{ steps.classify.outputs.triggers == 'true' }}"
 
       - name: "Install apt packages"

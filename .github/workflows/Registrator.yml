@@ -81,7 +81,7 @@ jobs:
           save-always: false
 
       - name: "Checkout package"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: package
           fetch-depth: 0
