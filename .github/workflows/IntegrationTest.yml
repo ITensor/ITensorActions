@@ -141,7 +141,7 @@ jobs:
         with:
           name: "integration-test-skip-${{ steps.skip_artifact.outputs.key }}"
           path: ${{ steps.skip_artifact.outputs.path }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: "${{ steps.classify.outputs.triggers == 'true' && steps.gate.outputs.skip != 'true' }}"
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}

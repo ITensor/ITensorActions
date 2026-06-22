@@ -42,7 +42,7 @@ jobs:
           HEAD_REF=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} --jq '.head.ref')
           echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.head_ref }}
           token: ${{ secrets.FORMATPULLREQUEST_PAT || secrets.GITHUB_TOKEN }}
