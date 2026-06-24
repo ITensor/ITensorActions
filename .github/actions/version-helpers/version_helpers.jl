@@ -182,6 +182,15 @@ function registrator_metadata(;
         readchomp(`git -C $package_path log -1 --pretty=%s HEAD`),
         ['\n', '\r'] => ' '
     )
+    # The subject becomes release-notes text rendered in a foreign repo (the
+    # local registry PR, or the General PR via JuliaRegistrator), where a bare
+    # `#123` from the package's squash-merge subject would auto-link to that
+    # repo's issue #123 instead of the package's. Qualify it with the source
+    # repo so the reference resolves where it was written.
+    repo = get(ENV, "GITHUB_REPOSITORY", "")
+    if !isempty(repo)
+        subject = replace(subject, r"(?<![\w/])#(\d+)" => SubstitutionString("$repo#\\1"))
+    end
 
     if isempty(old_ref) || old_ref == "0000000000000000000000000000000000000000"
         old_ref = try
