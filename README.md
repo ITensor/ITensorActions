@@ -673,6 +673,15 @@ The suffix is freeform; any non-empty prerelease tag triggers the skip behavior.
 
 `VersionCheck` also validates the bump shape pre-merge (patch+1 for non-breaking, minor+1 with patch=0 for pre-1.0 breaking, major+1 with minor=patch=0 for post-1.0 breaking) so malformed bumps fail the PR check directly rather than only after merge in `Registrator`.
 
+### Project.toml `[sources]` check
+
+Independently of the version-bump check (it runs on every PR, regardless of scope or draft state), `VersionCheck` rejects `[sources]` entries in any tracked `Project.toml` that must not reach `main`:
+
+- an absolute `path`, which is a machine-specific `Pkg.develop` artifact: it resolves the dependency from a location that exists only on the author's machine, and stays green on CI, where the path is absent, so nothing else catches it;
+- a `url`, which is a cross-repo branch pin: legitimate while a dependent PR is in review, but once merged it resolves the dependency from an unregistered branch.
+
+A relative `path` (for example a subproject pointing at `".."`) is legitimate and allowed. Both the `[sources.Name]` table and the inline `Name = {path = "..."}` forms are checked. Because it runs regardless of draft state, a dependent PR that pins an upstream branch shows a failing check until it drops the pin before merge.
+
 ## Check Compat Bounds
 
 The `CheckCompatBounds` workflow instantiates the package and fails if any
