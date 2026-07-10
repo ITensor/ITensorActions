@@ -49,6 +49,45 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # `[sources]` entries that must never reach `main`: an absolute `path` is a
+      # machine-specific `Pkg.develop` leak (it resolves the dep from a path that
+      # exists only on the author's machine, staying green on CI where it is
+      # absent), and a `url` is a cross-repo branch pin that is fine mid-review but
+      # resolves the dep from an unregistered branch once merged. A relative `path`
+      # (e.g. a subproject pointing at "..") is legitimate and allowed. Failing in
+      # draft PRs is intended: the point is to block these from reaching `main`.
+      - name: "Reject non-portable [sources] entries in Project.toml"
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, sys, tomllib
+
+          files = subprocess.check_output(
+              ["git", "ls-files", "*Project.toml"], text=True
+          ).split()
+          bad = []
+          for f in files:
+              with open(f, "rb") as fh:
+                  data = tomllib.load(fh)
+              for name, spec in data.get("sources", {}).items():
+                  if not isinstance(spec, dict):
+                      continue
+                  path = spec.get("path")
+                  if path is not None and os.path.isabs(path):
+                      bad.append(f'{f}: [sources.{name}] has an absolute path = "{path}"')
+                  if "url" in spec:
+                      bad.append(f'{f}: [sources.{name}] has a url = "{spec["url"]}"')
+          if bad:
+              print(
+                  "::error::These [sources] entries must not be merged to main: an "
+                  "absolute path is machine-specific, and a url is a cross-repo "
+                  'branch pin. Use a relative path (e.g. "..") or drop the source.'
+              )
+              for b in bad:
+                  print(b)
+              sys.exit(1)
+          print(f"Checked {len(files)} Project.toml file(s); no non-portable [sources] entries.")
+          PY
+
       - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
         id: classify
         with:
