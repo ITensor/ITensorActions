@@ -44,7 +44,12 @@ runs:
         esac
 
         if [ "$run_check" = "true" ]; then
-          julia --color=yes "$SCRIPT_PATH" "$WORKSPACE_ROOT"
+          # The script reads the registries through RegistryInstances, so give it a
+          # throwaway environment of its own rather than the workspace being checked.
+          script_env="$(mktemp -d)"
+          julia --color=yes --project="$script_env" -e \
+            'using Pkg; Pkg.add(Pkg.PackageSpec(; name = "RegistryInstances", version = "0.1"))'
+          julia --color=yes --project="$script_env" "$SCRIPT_PATH" "$WORKSPACE_ROOT"
         else
           echo "Skipping compat-bounds check (mode=$MODE, actor=${GITHUB_ACTOR:-unset})."
         fi

@@ -16,6 +16,10 @@
 #   workspace-root : defaults to pwd()
 
 using Pkg
+# The registry abstraction is an implementation detail of `Pkg` whose signatures
+# change between Julia minor versions. RegistryInstances exports the same names
+# as public API under semver, so read the registries through it instead.
+using RegistryInstances: reachable_registries, registry_info
 using TOML
 
 function parse_args(args)
@@ -128,15 +132,10 @@ end
 
 function registry_versions(uuid::Base.UUID)
     versions = VersionNumber[]
-    for reg in Pkg.Registry.reachable_registries()
+    for reg in reachable_registries()
         entry = get(reg.pkgs, uuid, nothing)
         entry === nothing && continue
-        # Julia 1.13 replaced `registry_info(entry)` with `registry_info(reg, entry)`.
-        info = if hasmethod(Pkg.Registry.registry_info, Tuple{typeof(reg), typeof(entry)})
-            Pkg.Registry.registry_info(reg, entry)
-        else
-            Pkg.Registry.registry_info(entry)
-        end
+        info = registry_info(entry)
         for (v, vinfo) in info.version_info
             vinfo.yanked && continue
             push!(versions, v)
