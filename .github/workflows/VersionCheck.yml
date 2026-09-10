@@ -88,7 +88,7 @@ jobs:
           print(f"Checked {len(files)} Project.toml file(s); no non-portable [sources] entries.")
           PY
 
-      - uses: ITensor/ITensorActions/.github/actions/classify-pr@main
+      - uses: ITensor/ITensorActions/.github/actions/classify-pr@99c4ff352a0c125b251a2ab4dd876b4d0f3111e8
         id: classify
         with:
           # `subdir` (the in-tree package whose Project.toml is checked) is
@@ -117,7 +117,7 @@ jobs:
 
       - name: "Check version was bumped"
         if: steps.classify.outputs.triggers == 'true'
-        uses: ITensor/ITensorActions/.github/actions/version-helpers@main
+        uses: ITensor/ITensorActions/.github/actions/version-helpers@99c4ff352a0c125b251a2ab4dd876b4d0f3111e8
         with:
           mode: version-check
           subdir: ${{ inputs.subdir }}
