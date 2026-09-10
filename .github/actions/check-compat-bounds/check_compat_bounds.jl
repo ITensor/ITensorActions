@@ -131,7 +131,12 @@ function registry_versions(uuid::Base.UUID)
     for reg in Pkg.Registry.reachable_registries()
         entry = get(reg.pkgs, uuid, nothing)
         entry === nothing && continue
-        info = Pkg.Registry.registry_info(entry)
+        # Julia 1.13 replaced `registry_info(entry)` with `registry_info(reg, entry)`.
+        info = if hasmethod(Pkg.Registry.registry_info, Tuple{typeof(reg), typeof(entry)})
+            Pkg.Registry.registry_info(reg, entry)
+        else
+            Pkg.Registry.registry_info(entry)
+        end
         for (v, vinfo) in info.version_info
             vinfo.yanked && continue
             push!(versions, v)
