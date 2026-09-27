@@ -75,6 +75,13 @@ jobs:
 
       - uses: julia-actions/cache@v3
         with:
+          # A local registry lives in the depot as a git clone, unlike General's
+          # packed form, and `Pkg.Registry.update` advances it by rebasing onto
+          # `origin/main`. A clone that once fails to rebase stays broken, and the
+          # cache hands the same broken clone to every later run, so resolution
+          # silently falls back to stale registry data and reports the result as
+          # unsatisfiable compat bounds. Re-clone it instead of restoring it.
+          cache-registries: "${{ inputs.localregistry == '' }}"
           delete-old-caches: false
           # See the comment in `Tests.yml`: don't cache a failed job's
           # half-installed depot, which would otherwise poison the cache.

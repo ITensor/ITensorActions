@@ -179,6 +179,13 @@ jobs:
       - uses: julia-actions/cache@v3
         if: "${{ steps.classify.outputs.triggers == 'true' && inputs.cache }}"
         with:
+          # A local registry lives in the depot as a git clone, unlike General's
+          # packed form, and `Pkg.Registry.update` advances it by rebasing onto
+          # `origin/main`. A clone that once fails to rebase stays broken, and the
+          # cache hands the same broken clone to every later run, so resolution
+          # silently falls back to stale registry data and reports the result as
+          # unsatisfiable compat bounds. Re-clone it instead of restoring it.
+          cache-registries: "${{ inputs.localregistry == '' }}"
           token: "${{ secrets.GITHUB_TOKEN }}"
           # Restore the pre-v3 behavior: don't save a cache from a failed
           # job. v3 caches on failure by default, which poisons the cache
